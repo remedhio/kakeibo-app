@@ -29,7 +29,12 @@
 
 **Build Command**:
 ```
-npm run build
+npm install && npm run build
+```
+
+または、より確実に：
+```
+npm ci && npx expo export --platform web
 ```
 
 **Output Directory**:
