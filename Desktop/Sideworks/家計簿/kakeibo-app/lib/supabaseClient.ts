@@ -9,12 +9,18 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase URL/Anon Key が設定されていません (.env を確認)');
 }
 
+// Web版ではlocalStorageを自動的に使用するため、storageを指定しない
+// モバイル版ではAsyncStorageを使用
+const authConfig: any = {
+  autoRefreshToken: true,
+  persistSession: true,
+  detectSessionInUrl: Platform.OS === 'web',
+};
+
+if (Platform.OS !== 'web') {
+  authConfig.storage = AsyncStorage;
+}
+
 export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    // Web版ではURLからセッションを検出する必要がある
-    detectSessionInUrl: Platform.OS === 'web',
-  },
+  auth: authConfig,
 });
