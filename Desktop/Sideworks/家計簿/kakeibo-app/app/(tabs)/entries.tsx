@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform as RNPlatform, ScrollView, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -43,6 +43,13 @@ export default function EntriesScreen() {
   const amountInputRef = useRef<any>(null);
   const noteInputRef = useRef<any>(null);
 
+  // 固定費の期間指定用
+  const [isFixedExpense, setIsFixedExpense] = useState(false);
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date(new Date().getFullYear() + 1, new Date().getMonth(), 1));
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: async () => {
@@ -64,6 +71,12 @@ export default function EntriesScreen() {
     [categories, type]
   );
 
+  // 固定費の親カテゴリIDを取得
+  const fixedExpenseParentId = useMemo(() => {
+    const fixedExpense = parentCategories.find(p => p.name === '固定費');
+    return fixedExpense?.id || null;
+  }, [parentCategories]);
+
   // 選択された親カテゴリの子カテゴリのみを表示
   const filteredCategories = useMemo(() => {
     if (type === 'expense' && selectedParentId) {
@@ -72,6 +85,15 @@ export default function EntriesScreen() {
     // 収入カテゴリまたは親カテゴリ未選択の場合は全て表示（後方互換性のため）
     return type === 'income' ? categories.filter((c) => c.type === type && c.parent_id === null) : [];
   }, [categories, type, selectedParentId, childCategories]);
+
+  // 選択されたカテゴリが固定費かどうかを判定
+  useEffect(() => {
+    if (categoryId && selectedParentId === fixedExpenseParentId) {
+      setIsFixedExpense(true);
+    } else {
+      setIsFixedExpense(false);
+    }
+  }, [categoryId, selectedParentId, fixedExpenseParentId]);
 
   const { data: entries = [], isLoading } = useQuery<Entry[]>({
     queryKey: ['entries', filterType, filterMonth],
@@ -149,9 +171,26 @@ export default function EntriesScreen() {
     setSelectedDate(new Date());
     setEditingId(null);
     setIsFormExpanded(false);
+    setIsFixedExpense(false);
+    setStartDate(new Date());
+    setEndDate(new Date(new Date().getFullYear() + 1, new Date().getMonth(), 1));
   };
 
-  const save = () => {
+  // 期間中の各月の1日を生成する関数
+  const generateMonthlyDates = (start: Date, end: Date): string[] => {
+    const dates: string[] = [];
+    const current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endDate = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    while (current <= endDate) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    return dates;
+  };
+
+  const save = async () => {
     if (!amount.trim() || isNaN(Number(amount)) || Number(amount) <= 0) {
       Alert.alert('有効な金額を入力してください');
       return;
@@ -161,18 +200,59 @@ export default function EntriesScreen() {
       return;
     }
 
-    const entry = {
-      type,
-      amount: Number(amount),
-      happened_on: selectedDate.toISOString().split('T')[0],
-      note: note.trim() || null,
-      category_id: categoryId,
-      user_id: session?.user?.id,
-    };
+    // 固定費の場合、期間の検証
+    if (isFixedExpense) {
+      if (startDate > endDate) {
+        Alert.alert('開始日は終了日より前である必要があります');
+        return;
+      }
+    }
 
     if (editingId) {
+      // 編集の場合は通常の処理
+      const entry = {
+        type,
+        amount: Number(amount),
+        happened_on: selectedDate.toISOString().split('T')[0],
+        note: note.trim() || null,
+        category_id: categoryId,
+        user_id: session?.user?.id,
+      };
       updateMutation.mutate({ id: editingId, ...entry });
+    } else if (isFixedExpense) {
+      // 固定費の場合、期間中の各月にエントリーを作成
+      const dates = generateMonthlyDates(startDate, endDate);
+      const entries = dates.map(date => ({
+        type,
+        amount: Number(amount),
+        happened_on: date,
+        note: note.trim() || `${formatDate(startDate)}〜${formatDate(endDate)}の固定費`,
+        category_id: categoryId,
+        user_id: session?.user?.id,
+      }));
+
+      try {
+        const { error } = await supabase.from('entries').insert(entries);
+        if (error) {
+          Alert.alert('保存に失敗しました', error.message);
+          return;
+        }
+        queryClient.invalidateQueries({ queryKey: ['entries'] });
+        resetForm();
+        Alert.alert('保存完了', `${dates.length}件のエントリーを作成しました`);
+      } catch (error: any) {
+        Alert.alert('保存に失敗しました', error.message);
+      }
     } else {
+      // 通常のエントリー作成
+      const entry = {
+        type,
+        amount: Number(amount),
+        happened_on: selectedDate.toISOString().split('T')[0],
+        note: note.trim() || null,
+        category_id: categoryId,
+        user_id: session?.user?.id,
+      };
       createMutation.mutate(entry);
     }
   };
@@ -285,15 +365,19 @@ export default function EntriesScreen() {
       style={styles.container}
       behavior={RNPlatform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={RNPlatform.OS === 'ios' ? 90 : 0}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.formContainer}>
-          {!isFormExpanded && !editingId ? (
-            <TouchableOpacity
-              style={styles.expandFormButton}
-              onPress={() => setIsFormExpanded(true)}>
-              <Text style={styles.expandFormButtonText}>+ 新しい記録を追加</Text>
-            </TouchableOpacity>
-          ) : (
+      <View style={styles.formContainer}>
+        {!isFormExpanded && !editingId ? (
+          <TouchableOpacity
+            style={styles.expandFormButton}
+            onPress={() => setIsFormExpanded(true)}>
+            <Text style={styles.expandFormButtonText}>+ 新しい記録を追加</Text>
+          </TouchableOpacity>
+        ) : (
+          <ScrollView
+            style={styles.formScrollView}
+            contentContainerStyle={styles.formScrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none">
             <View style={styles.form}>
               <View style={styles.formHeader}>
                 <Text style={styles.formTitle}>{editingId ? '記録を編集' : '新しい記録を追加'}</Text>
@@ -311,6 +395,8 @@ export default function EntriesScreen() {
                   onPress={() => {
                     setType('expense');
                     setCategoryId(null);
+                    setSelectedParentId(null);
+                    setIsFixedExpense(false);
                   }}>
                   <Text style={type === 'expense' ? styles.chipTextActive : styles.chipText}>支出</Text>
                 </TouchableOpacity>
@@ -319,49 +405,145 @@ export default function EntriesScreen() {
                   onPress={() => {
                     setType('income');
                     setCategoryId(null);
+                    setSelectedParentId(null);
+                    setIsFixedExpense(false);
                   }}>
                   <Text style={type === 'income' ? styles.chipTextActive : styles.chipText}>収入</Text>
                 </TouchableOpacity>
               </View>
 
-              {Platform.OS === 'web' ? (
-                <View style={styles.dateButton}>
-                  <Text style={styles.dateButtonLabel}>日付:</Text>
-                  <TextInput
-                    {...({ type: 'date' } as any)}
-                    value={selectedDate.toISOString().split('T')[0]}
-                    onChangeText={(text) => {
-                      if (text) {
-                        setSelectedDate(new Date(text));
-                      }
-                    }}
-                    style={styles.dateInputWeb}
-                  />
-                </View>
+              {isFixedExpense ? (
+                <>
+                  <Text style={styles.fixedExpenseLabel}>固定費の期間を指定</Text>
+                  {Platform.OS === 'web' ? (
+                    <>
+                      <View style={styles.dateButton}>
+                        <Text style={styles.dateButtonLabel}>開始日:</Text>
+                        <TextInput
+                          {...({ type: 'date' } as any)}
+                          value={startDate.toISOString().split('T')[0]}
+                          onChangeText={(text) => {
+                            if (text) {
+                              setStartDate(new Date(text));
+                            }
+                          }}
+                          style={styles.dateInputWeb}
+                        />
+                      </View>
+                      <View style={styles.dateButton}>
+                        <Text style={styles.dateButtonLabel}>終了日:</Text>
+                        <TextInput
+                          {...({ type: 'date' } as any)}
+                          value={endDate.toISOString().split('T')[0]}
+                          onChangeText={(text) => {
+                            if (text) {
+                              setEndDate(new Date(text));
+                            }
+                          }}
+                          style={styles.dateInputWeb}
+                        />
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={styles.dateButton} onPress={() => setShowStartDatePicker(true)}>
+                        <Text style={styles.dateButtonText}>開始日: {formatDate(startDate)}</Text>
+                      </TouchableOpacity>
+                      {showStartDatePicker && (
+                        <>
+                          <DateTimePicker
+                            value={startDate}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(event, date) => {
+                              if (Platform.OS === 'android') {
+                                setShowStartDatePicker(false);
+                              }
+                              if (date) setStartDate(date);
+                            }}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity
+                              style={styles.datePickerDoneButton}
+                              onPress={() => setShowStartDatePicker(false)}>
+                              <Text style={styles.datePickerDoneText}>完了</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                      <TouchableOpacity style={styles.dateButton} onPress={() => setShowEndDatePicker(true)}>
+                        <Text style={styles.dateButtonText}>終了日: {formatDate(endDate)}</Text>
+                      </TouchableOpacity>
+                      {showEndDatePicker && (
+                        <>
+                          <DateTimePicker
+                            value={endDate}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(event, date) => {
+                              if (Platform.OS === 'android') {
+                                setShowEndDatePicker(false);
+                              }
+                              if (date) setEndDate(date);
+                            }}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity
+                              style={styles.datePickerDoneButton}
+                              onPress={() => setShowEndDatePicker(false)}>
+                              <Text style={styles.datePickerDoneText}>完了</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                  <Text style={styles.fixedExpenseInfo}>
+                    期間中の各月に自動的にエントリーが作成されます
+                  </Text>
+                </>
               ) : (
                 <>
-                  <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
-                    <Text style={styles.dateButtonText}>日付: {formatDate(selectedDate)}</Text>
-                  </TouchableOpacity>
-                  {showDatePicker && (
-                    <>
-                      <DateTimePicker
-                        value={selectedDate}
-                        mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(event, date) => {
-                          if (Platform.OS === 'android') {
-                            setShowDatePicker(false);
+                  {Platform.OS === 'web' ? (
+                    <View style={styles.dateButton}>
+                      <Text style={styles.dateButtonLabel}>日付:</Text>
+                      <TextInput
+                        {...({ type: 'date' } as any)}
+                        value={selectedDate.toISOString().split('T')[0]}
+                        onChangeText={(text) => {
+                          if (text) {
+                            setSelectedDate(new Date(text));
                           }
-                          if (date) setSelectedDate(date);
                         }}
+                        style={styles.dateInputWeb}
                       />
-                      {Platform.OS === 'ios' && (
-                        <TouchableOpacity
-                          style={styles.datePickerDoneButton}
-                          onPress={() => setShowDatePicker(false)}>
-                          <Text style={styles.datePickerDoneText}>完了</Text>
-                        </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={styles.dateButton} onPress={() => setShowDatePicker(true)}>
+                        <Text style={styles.dateButtonText}>日付: {formatDate(selectedDate)}</Text>
+                      </TouchableOpacity>
+                      {showDatePicker && (
+                        <>
+                          <DateTimePicker
+                            value={selectedDate}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(event, date) => {
+                              if (Platform.OS === 'android') {
+                                setShowDatePicker(false);
+                              }
+                              if (date) setSelectedDate(date);
+                            }}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity
+                              style={styles.datePickerDoneButton}
+                              onPress={() => setShowDatePicker(false)}>
+                              <Text style={styles.datePickerDoneText}>完了</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -376,6 +558,8 @@ export default function EntriesScreen() {
                 onChangeText={setAmount}
                 keyboardType="numeric"
                 returnKeyType="done"
+                editable={true}
+                autoFocus={false}
                 onSubmitEditing={() => {
                   amountInputRef.current?.blur();
                   Keyboard.dismiss();
@@ -489,9 +673,9 @@ export default function EntriesScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          )}
-        </View>
-      </TouchableWithoutFeedback>
+          </ScrollView>
+        )}
+      </View>
 
       {isLoading ? (
         <View style={styles.empty}>
@@ -690,6 +874,13 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginTop: 4,
   },
+  formScrollView: {
+    flex: 1,
+  },
+  formScrollContent: {
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
   form: {
     gap: 16,
     padding: 20,
@@ -752,6 +943,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#374151',
     fontWeight: '500',
+  },
+  fixedExpenseLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  fixedExpenseInfo: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginBottom: 8,
   },
   dateInputWeb: {
     flex: 1,
