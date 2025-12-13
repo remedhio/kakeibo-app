@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -28,8 +28,14 @@ export default function CategoriesScreen() {
 
   // 親カテゴリと子カテゴリを分離
   const parentCategories = useMemo(
-    () => categories.filter(c => c.type === 'expense' && c.parent_id === null),
+    () => categories.filter(c => c.parent_id === null),
     [categories]
+  );
+
+  // 現在選択されているタイプに応じた親カテゴリを取得
+  const currentParentCategories = useMemo(
+    () => parentCategories.filter(c => c.type === type),
+    [parentCategories, type]
   );
 
   const childCategories = useMemo(
@@ -45,19 +51,52 @@ export default function CategoriesScreen() {
   // 階層構造でソート（親カテゴリ → その子カテゴリ）
   const sorted = useMemo(() => {
     const result: Category[] = [];
+    const addedIds = new Set<string>();
 
     // 支出: 親カテゴリごとにグループ化
-    parentCategories.forEach(parent => {
-      result.push(parent);
-      const children = childCategories.filter(c => c.parent_id === parent.id);
-      result.push(...children.sort((a, b) => a.name.localeCompare(b.name)));
+    parentCategories
+      .filter(p => p.type === 'expense')
+      .forEach(parent => {
+        if (!addedIds.has(parent.id)) {
+          result.push(parent);
+          addedIds.add(parent.id);
+        }
+        const children = childCategories.filter(c => c.parent_id === parent.id);
+        children.forEach(child => {
+          if (!addedIds.has(child.id)) {
+            result.push(child);
+            addedIds.add(child.id);
+          }
+        });
+      });
+
+    // 収入: 親カテゴリごとにグループ化
+    parentCategories
+      .filter(p => p.type === 'income')
+      .forEach(parent => {
+        if (!addedIds.has(parent.id)) {
+          result.push(parent);
+          addedIds.add(parent.id);
+        }
+        const children = childCategories.filter(c => c.parent_id === parent.id);
+        children.forEach(child => {
+          if (!addedIds.has(child.id)) {
+            result.push(child);
+            addedIds.add(child.id);
+          }
+        });
+      });
+
+    // ソート
+    result.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'expense' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
     });
 
-    // 収入カテゴリ
-    result.push(...incomeCategories.sort((a, b) => a.name.localeCompare(b.name)));
-
     return result;
-  }, [parentCategories, childCategories, incomeCategories]);
+  }, [parentCategories, childCategories]);
 
   useEffect(() => {
     if (session) {
@@ -125,7 +164,7 @@ export default function CategoriesScreen() {
     }
   };
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase.from('categories').select('*');
     setLoading(false);
@@ -134,16 +173,16 @@ export default function CategoriesScreen() {
       return;
     }
     setCategories((data ?? []) as Category[]);
-  };
+  }, []);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setName('');
     setType('expense');
     setParentId(null);
     setEditingId(null);
-  };
+  }, []);
 
-  const save = async () => {
+  const save = useCallback(async () => {
     if (!name.trim()) {
       Alert.alert('名前を入力してください');
       return;
@@ -165,7 +204,7 @@ export default function CategoriesScreen() {
     if (editingId) {
       const { error } = await supabase
         .from('categories')
-        .update({ name, type, parent_id: type === 'expense' ? parentId : null })
+        .update({ name, type, parent_id: parentId })
         .eq('id', editingId);
       setSaving(false);
       if (error) {
@@ -176,7 +215,7 @@ export default function CategoriesScreen() {
       const { error } = await supabase.from('categories').insert({
         name,
         type,
-        parent_id: type === 'expense' ? parentId : null,
+        parent_id: parentId,
         user_id: session?.user?.id
       });
       setSaving(false);
@@ -189,17 +228,17 @@ export default function CategoriesScreen() {
     refresh();
     // React Queryのキャッシュを無効化して、他の画面でもカテゴリが更新されるようにする
     queryClient.invalidateQueries({ queryKey: ['categories'] });
-  };
+  }, [name, type, parentId, editingId, session, resetForm, refresh, queryClient]);
 
   // 親カテゴリ（固定費、変動費、投資、給料、貯金）かどうかを判定
-  const isParentCategory = (item: Category) => {
+  const isParentCategory = useCallback((item: Category) => {
     if (item.parent_id !== null) return false;
     if (item.type === 'expense' && ['固定費', '変動費', '投資'].includes(item.name)) return true;
     if (item.type === 'income' && ['給料', '貯金'].includes(item.name)) return true;
     return false;
-  };
+  }, []);
 
-  const onEdit = (item: Category) => {
+  const onEdit = useCallback((item: Category) => {
     // 親カテゴリは編集不可
     if (isParentCategory(item)) {
       Alert.alert('編集不可', '親カテゴリ（固定費、変動費、投資）は編集できません');
@@ -209,9 +248,9 @@ export default function CategoriesScreen() {
     setName(item.name);
     setType(item.type);
     setParentId(item.parent_id);
-  };
+  }, [isParentCategory]);
 
-  const onDelete = async (id: string) => {
+  const onDelete = useCallback((id: string) => {
     const item = categories.find(c => c.id === id);
     if (!item) return;
 
@@ -233,12 +272,13 @@ export default function CategoriesScreen() {
             Alert.alert('削除に失敗しました', error.message);
             return;
           }
-          refresh();
+          await refresh();
+          queryClient.invalidateQueries({ queryKey: ['categories'] });
           if (editingId === id) resetForm();
         },
       },
     ]);
-  };
+  }, [categories, editingId, isParentCategory, refresh, resetForm, queryClient]);
 
   const renderHeader = useMemo(
     () => (
@@ -274,7 +314,7 @@ export default function CategoriesScreen() {
             <View>
               <Text style={styles.label}>親カテゴリ</Text>
               <View style={styles.parentCategoryRow}>
-                {parentCategories.map((parent) => (
+                {currentParentCategories.map((parent) => (
                   <TouchableOpacity
                     key={parent.id}
                     style={[styles.chip, parentId === parent.id && styles.chipActive]}
@@ -305,8 +345,50 @@ export default function CategoriesScreen() {
         </View>
       </>
     ),
-    [name, type, parentId, saving, editingId, loading, parentCategories]
+    [name, type, parentId, saving, editingId, loading, currentParentCategories, save, resetForm]
   );
+
+  const renderItem = useCallback(({ item }: { item: Category }) => {
+    const isChild = item.parent_id !== null;
+    const parentName = isChild ? categories.find(c => c.id === item.parent_id)?.name : null;
+
+    const handleEdit = () => {
+      onEdit(item);
+    };
+
+    const handleDelete = () => {
+      onDelete(item.id);
+    };
+
+    return (
+      <View style={[styles.item, isChild && styles.childItem]}>
+        <View>
+          <Text style={styles.itemName}>
+            {isChild ? `  └ ${item.name}` : item.name}
+          </Text>
+          <Text style={styles.itemType}>
+            {item.type === 'expense' ? '支出' : '収入'}
+            {parentName && ` / ${parentName}`}
+          </Text>
+        </View>
+        <View style={styles.itemActions}>
+          {!isParentCategory(item) && (
+            <>
+              <TouchableOpacity onPress={handleEdit} style={styles.itemButton}>
+                <Text>編集</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleDelete} style={[styles.itemButton, styles.deleteButton]}>
+                <Text style={styles.deleteText}>削除</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {isParentCategory(item) && (
+            <Text style={styles.disabledText}>編集・削除不可</Text>
+          )}
+        </View>
+      </View>
+    );
+  }, [categories, isParentCategory, onEdit, onDelete]);
 
   return (
     <KeyboardAvoidingView
@@ -319,39 +401,7 @@ export default function CategoriesScreen() {
         ListHeaderComponent={renderHeader}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="none"
-        renderItem={({ item }) => {
-          const isChild = item.parent_id !== null;
-          const parentName = isChild ? categories.find(c => c.id === item.parent_id)?.name : null;
-
-          return (
-            <View style={[styles.item, isChild && styles.childItem]}>
-              <View>
-                <Text style={styles.itemName}>
-                  {isChild ? `  └ ${item.name}` : item.name}
-                </Text>
-                <Text style={styles.itemType}>
-                  {item.type === 'expense' ? '支出' : '収入'}
-                  {parentName && ` / ${parentName}`}
-                </Text>
-              </View>
-              <View style={styles.itemActions}>
-                {!isParentCategory(item) && (
-                  <>
-                    <TouchableOpacity onPress={() => onEdit(item)} style={styles.itemButton}>
-                      <Text>編集</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => onDelete(item.id)} style={[styles.itemButton, styles.deleteButton]}>
-                      <Text style={styles.deleteText}>削除</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-                {isParentCategory(item) && (
-                  <Text style={styles.disabledText}>編集・削除不可</Text>
-                )}
-              </View>
-            </View>
-          );
-        }}
+        renderItem={renderItem}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text>カテゴリがありません。追加してください。</Text>

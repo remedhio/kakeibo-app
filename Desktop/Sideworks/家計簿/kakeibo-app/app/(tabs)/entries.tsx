@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform as RNPlatform, ScrollView, Keyboard, TouchableWithoutFeedback, Modal, Dimensions } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -433,6 +433,21 @@ export default function EntriesScreen() {
   const currentParentCategories = filterType === 'expense' ? expenseParentCategories : filterType === 'income' ? incomeParentCategories : [];
   const currentParentCategorySummary = filterType === 'expense' ? expenseParentCategorySummary : filterType === 'income' ? incomeParentCategorySummary : {};
 
+  // フィルタータイプが変更された時に、選択された親カテゴリタブをリセット
+  const prevFilterTypeRef = useRef(filterType);
+  useEffect(() => {
+    if (prevFilterTypeRef.current !== filterType) {
+      console.log('FilterType changed, resetting selectedParentTab');
+      setSelectedParentTab(null);
+      prevFilterTypeRef.current = filterType;
+    }
+  }, [filterType]);
+
+  // selectedParentTabの変更を監視
+  useEffect(() => {
+    console.log('selectedParentTab changed to:', selectedParentTab);
+  }, [selectedParentTab]);
+
   // 親カテゴリタブに基づいてエントリーをフィルタリング
   const filteredEntries = useMemo(() => {
     if (!selectedParentTab) {
@@ -475,27 +490,39 @@ export default function EntriesScreen() {
       {currentParentCategories.length > 0 && (filterType === 'expense' || filterType === 'income') && (
         <View style={styles.parentTabs}>
           <TouchableOpacity
-            style={[styles.parentTab, selectedParentTab === null && styles.parentTabActive]}
-            onPress={() => setSelectedParentTab(null)}>
-            <Text style={[styles.parentTabText, selectedParentTab === null && styles.parentTabTextActive]}>
+            style={selectedParentTab === null ? [styles.parentTab, styles.parentTabActive] : styles.parentTab}
+            onPress={() => {
+              console.log('Pressing All tab');
+              setSelectedParentTab(null);
+            }}>
+            <Text style={selectedParentTab === null ? [styles.parentTabText, styles.parentTabTextActive] : styles.parentTabText}>
               すべて
             </Text>
           </TouchableOpacity>
-          {currentParentCategories.map((parent) => (
-            <TouchableOpacity
-              key={parent.id}
-              style={[styles.parentTab, selectedParentTab === parent.id && styles.parentTabActive]}
-              onPress={() => setSelectedParentTab(parent.id)}>
-              <Text style={[styles.parentTabText, selectedParentTab === parent.id && styles.parentTabTextActive]}>
-                {parent.name}
-              </Text>
-              {selectedParentTab === parent.id && currentParentCategorySummary[parent.id] && (
-                <Text style={styles.parentTabAmount}>
-                  {formatCurrency(currentParentCategorySummary[parent.id].total)}
+          {currentParentCategories.map((parent) => {
+            const isActive = selectedParentTab === parent.id;
+            const summary = currentParentCategorySummary[parent.id];
+            return (
+              <TouchableOpacity
+                key={parent.id}
+                style={isActive ? [styles.parentTab, styles.parentTabActive] : styles.parentTab}
+                onPress={() => {
+                  console.log('Pressing tab:', parent.name, 'ID:', parent.id);
+                  console.log('Current selectedParentTab:', selectedParentTab);
+                  setSelectedParentTab(parent.id);
+                  console.log('Set selectedParentTab to:', parent.id);
+                }}>
+                <Text style={isActive ? [styles.parentTabText, styles.parentTabTextActive] : styles.parentTabText}>
+                  {parent.name}
                 </Text>
-              )}
-            </TouchableOpacity>
-          ))}
+                {summary && (
+                  <Text style={isActive ? styles.parentTabAmount : styles.parentTabAmountInactive}>
+                    {formatCurrency(summary.total)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
 
@@ -557,6 +584,9 @@ export default function EntriesScreen() {
     totalExpense,
     filterType,
     filterMonth,
+    selectedParentTab,
+    currentParentCategories,
+    currentParentCategorySummary,
   ]);
 
   return (
@@ -1177,6 +1207,12 @@ const styles = StyleSheet.create({
   parentTabAmount: {
     fontSize: 11,
     color: '#ffffff',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  parentTabAmountInactive: {
+    fontSize: 11,
+    color: '#6b7280',
     marginTop: 4,
     fontWeight: '500',
   },
