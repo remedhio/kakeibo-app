@@ -40,7 +40,6 @@ export default function EntriesScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterMonth, setFilterMonth] = useState(new Date());
-  const [isFormExpanded, setIsFormExpanded] = useState(false);
   const amountInputRef = useRef<any>(null);
   const noteInputRef = useRef<any>(null);
 
@@ -181,20 +180,6 @@ export default function EntriesScreen() {
     enabled: !!selectedCategoryId && !!session,
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (entry: Omit<Entry, 'id' | 'created_at' | 'categories'>) => {
-      const { error } = await supabase.from('entries').insert(entry);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['entries'] });
-      resetForm();
-    },
-    onError: (error: Error) => {
-      Alert.alert('保存に失敗しました', error.message);
-    },
-  });
-
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...entry }: Partial<Entry> & { id: string }) => {
       if (!session?.user?.id) {
@@ -246,7 +231,6 @@ export default function EntriesScreen() {
     setSelectedParentId(null);
     setSelectedDate(new Date());
     setEditingId(null);
-    setIsFormExpanded(false);
     setIsFixedExpense(false);
     setStartDate(new Date());
     setEndDate(new Date(new Date().getFullYear() + 1, new Date().getMonth(), 1));
@@ -295,7 +279,10 @@ export default function EntriesScreen() {
         user_id: session?.user?.id,
       };
       updateMutation.mutate({ id: editingId, ...entry });
-    } else if (isFixedExpense) {
+      return;
+    }
+
+    if (isFixedExpense) {
       // 固定費の場合、期間中の各月にエントリーを作成
       const dates = generateMonthlyDates(startDate, endDate);
       const entries = dates.map(date => ({
@@ -319,17 +306,6 @@ export default function EntriesScreen() {
       } catch (error: any) {
         Alert.alert('保存に失敗しました', error.message);
       }
-    } else {
-      // 通常のエントリー作成
-      const entry = {
-        type,
-        amount: Number(amount),
-        happened_on: selectedDate.toISOString().split('T')[0],
-        note: note.trim() || null,
-        category_id: categoryId,
-        user_id: session?.user?.id,
-      };
-      createMutation.mutate(entry);
     }
   };
 
@@ -349,7 +325,6 @@ export default function EntriesScreen() {
       }
     }
     setSelectedDate(new Date(item.happened_on));
-    setIsFormExpanded(true);
   };
 
   const performDelete = useCallback((id: string) => {
@@ -627,14 +602,8 @@ export default function EntriesScreen() {
       style={styles.container}
       behavior={RNPlatform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={RNPlatform.OS === 'ios' ? 90 : 0}>
-      <View style={styles.formContainer}>
-        {!isFormExpanded && !editingId ? (
-          <TouchableOpacity
-            style={styles.expandFormButton}
-            onPress={() => setIsFormExpanded(true)}>
-            <Text style={styles.expandFormButtonText}>+ 新しい記録を追加</Text>
-          </TouchableOpacity>
-        ) : (
+      {editingId && (
+        <View style={styles.formContainer}>
           <ScrollView
             style={styles.formScrollView}
             contentContainerStyle={styles.formScrollContent}
@@ -642,7 +611,7 @@ export default function EntriesScreen() {
             keyboardDismissMode="none">
             <View style={styles.form}>
               <View style={styles.formHeader}>
-                <Text style={styles.formTitle}>{editingId ? '記録を編集' : '新しい記録を追加'}</Text>
+                <Text style={styles.formTitle}>記録を編集</Text>
                 <TouchableOpacity
                   onPress={() => {
                     resetForm();
@@ -785,16 +754,24 @@ export default function EntriesScreen() {
                   {Platform.OS === 'web' ? (
                     <View style={styles.dateButton}>
                       <Text style={styles.dateButtonLabel}>日付:</Text>
-                      <TextInput
-                        {...({ type: 'date' } as any)}
-                        value={selectedDate.toISOString().split('T')[0]}
-                        onChangeText={(text) => {
-                          if (text) {
-                            setSelectedDate(new Date(text));
+                      {createElement('input', {
+                        type: 'date',
+                        value: selectedDate.toISOString().split('T')[0],
+                        onChange: (e: any) => {
+                          if (e.target && e.target.value) {
+                            setSelectedDate(new Date(e.target.value));
                           }
-                        }}
-                        style={styles.dateInputWeb}
-                      />
+                        },
+                        style: {
+                          flex: 1,
+                          fontSize: 15,
+                          color: '#374151',
+                          fontWeight: '500',
+                          border: 'none',
+                          outline: 'none',
+                          background: 'transparent',
+                        },
+                      } as any)}
                     </View>
                   ) : (
                     <>
@@ -914,26 +891,20 @@ export default function EntriesScreen() {
               />
 
               <TouchableOpacity
-                style={[styles.saveButton, (createMutation.isPending || updateMutation.isPending) && styles.buttonDisabled]}
+                style={[styles.saveButton, updateMutation.isPending && styles.buttonDisabled]}
                 onPress={save}
-                disabled={createMutation.isPending || updateMutation.isPending}>
+                disabled={updateMutation.isPending}>
                 <Text style={styles.saveButtonText}>
-                  {createMutation.isPending || updateMutation.isPending
-                    ? '保存中...'
-                    : editingId
-                      ? '更新'
-                      : '追加'}
+                  {updateMutation.isPending ? '更新中...' : '更新'}
                 </Text>
               </TouchableOpacity>
-              {editingId && (
-                <TouchableOpacity style={styles.cancelButton} onPress={resetForm}>
-                  <Text style={styles.cancelText}>キャンセル</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity style={styles.cancelButton} onPress={resetForm}>
+                <Text style={styles.cancelText}>キャンセル</Text>
+              </TouchableOpacity>
             </View>
           </ScrollView>
-        )}
-      </View>
+        </View>
+      )}
 
       {isLoading ? (
         <View style={styles.empty}>
@@ -974,7 +945,9 @@ export default function EntriesScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>記録がありません。追加してください。</Text>
+              <Text style={styles.emptyIcon}>📝</Text>
+              <Text style={styles.emptyTitle}>記録がありません</Text>
+              <Text style={styles.emptyText}>「追加」タブから新しい記録を追加できます</Text>
             </View>
           }
           contentContainerStyle={filteredEntries.length === 0 ? styles.emptyContainer : styles.listContent}
@@ -1107,26 +1080,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
-  },
-  expandFormButton: {
-    backgroundColor: '#3b82f6',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  expandFormButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-    letterSpacing: 0.3,
   },
   formHeader: {
     flexDirection: 'row',
@@ -1617,6 +1570,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptyText: {
     fontSize: 15,
