@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect, createElement } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform as RNPlatform, ScrollView, Keyboard, TouchableWithoutFeedback, Modal, Dimensions } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -681,29 +681,45 @@ export default function EntriesScreen() {
                     <>
                       <View style={styles.dateButton}>
                         <Text style={styles.dateButtonLabel}>開始日:</Text>
-                        <TextInput
-                          {...({ type: 'date' } as any)}
-                          value={startDate.toISOString().split('T')[0]}
-                          onChangeText={(text) => {
-                            if (text) {
-                              setStartDate(new Date(text));
+                        {createElement('input', {
+                          type: 'date',
+                          value: startDate.toISOString().split('T')[0],
+                          onChange: (e: any) => {
+                            if (e.target && e.target.value) {
+                              setStartDate(new Date(e.target.value));
                             }
-                          }}
-                          style={styles.dateInputWeb}
-                        />
+                          },
+                          style: {
+                            flex: 1,
+                            fontSize: 15,
+                            color: '#374151',
+                            fontWeight: '500',
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                          },
+                        } as any)}
                       </View>
                       <View style={styles.dateButton}>
                         <Text style={styles.dateButtonLabel}>終了日:</Text>
-                        <TextInput
-                          {...({ type: 'date' } as any)}
-                          value={endDate.toISOString().split('T')[0]}
-                          onChangeText={(text) => {
-                            if (text) {
-                              setEndDate(new Date(text));
+                        {createElement('input', {
+                          type: 'date',
+                          value: endDate.toISOString().split('T')[0],
+                          onChange: (e: any) => {
+                            if (e.target && e.target.value) {
+                              setEndDate(new Date(e.target.value));
                             }
-                          }}
-                          style={styles.dateInputWeb}
-                        />
+                          },
+                          style: {
+                            flex: 1,
+                            fontSize: 15,
+                            color: '#374151',
+                            fontWeight: '500',
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                          },
+                        } as any)}
                       </View>
                     </>
                   ) : (
@@ -983,54 +999,66 @@ export default function EntriesScreen() {
             </View>
             <ScrollView style={styles.modalBody}>
               {categoryMonthlyData.length > 0 ? (
-                <View style={styles.chartContainer}>
-                  <BarChart
-                    data={{
-                      labels: categoryMonthlyData.map(d => {
-                        const [year, month] = d.month.split('-');
-                        return `${month}/${year.slice(2)}`;
-                      }),
-                      datasets: [
-                        {
-                          data: categoryMonthlyData.map(d => d.total),
-                        },
-                      ],
-                    }}
-                    width={Dimensions.get('window').width - 80}
-                    height={350}
-                    yAxisLabel="¥"
-                    yAxisSuffix=""
-                    fromZero={true}
-                    yAxisInterval={1}
-                    formatYLabel={(value) => {
-                      const num = parseFloat(value);
-                      if (num >= 10000) {
-                        return `${(num / 10000).toFixed(1)}万`;
-                      }
-                      return Math.round(num).toString();
-                    }}
-                    chartConfig={{
-                      backgroundColor: '#ffffff',
-                      backgroundGradientFrom: '#ffffff',
-                      backgroundGradientTo: '#ffffff',
-                      decimalPlaces: 0,
-                      color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
-                      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                      style: {
-                        borderRadius: 16,
-                      },
-                      barPercentage: 0.7,
-                      propsForLabels: {
-                        fontSize: 10,
-                      },
-                    }}
-                    style={{
-                      marginVertical: 8,
-                      borderRadius: 16,
-                    }}
-                    showValuesOnTopOfBars={true}
-                    verticalLabelRotation={0}
-                  />
+                <View style={styles.chartWrapper}>
+                  <ScrollView
+                    horizontal={true}
+                    showsHorizontalScrollIndicator={true}
+                    style={styles.chartScrollView}
+                    contentContainerStyle={styles.chartScrollContent}
+                  >
+                    <View style={styles.chartContainer}>
+                      <BarChart
+                        data={{
+                          labels: categoryMonthlyData.map(d => {
+                            const [year, month] = d.month.split('-');
+                            return `${month}/${year.slice(2)}`;
+                          }),
+                          datasets: [
+                            {
+                              data: categoryMonthlyData.map(d => d.total),
+                            },
+                          ],
+                        }}
+                        width={Math.max(
+                          Dimensions.get('window').width - 80,
+                          categoryMonthlyData.length * 60
+                        )}
+                        height={350}
+                        yAxisLabel="¥"
+                        yAxisSuffix=""
+                        fromZero={true}
+                        yAxisInterval={1}
+                        formatYLabel={(value) => {
+                          const num = parseFloat(value);
+                          if (num >= 10000) {
+                            return `${(num / 10000).toFixed(1)}万`;
+                          }
+                          return Math.round(num).toString();
+                        }}
+                        chartConfig={{
+                          backgroundColor: '#ffffff',
+                          backgroundGradientFrom: '#ffffff',
+                          backgroundGradientTo: '#ffffff',
+                          decimalPlaces: 0,
+                          color: (opacity = 1) => `rgba(34, 197, 94, ${opacity})`,
+                          labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                          style: {
+                            borderRadius: 16,
+                          },
+                          barPercentage: 0.7,
+                          propsForLabels: {
+                            fontSize: categoryMonthlyData.length > 12 ? 9 : 10,
+                          },
+                        }}
+                        style={{
+                          marginVertical: 8,
+                          borderRadius: 16,
+                        }}
+                        showValuesOnTopOfBars={true}
+                        verticalLabelRotation={categoryMonthlyData.length > 12 ? -45 : 0}
+                      />
+                    </View>
+                  </ScrollView>
                   <View style={styles.chartSummary}>
                     {categoryMonthlyData.map((d, index) => (
                       <View key={index} style={styles.summaryRow}>
@@ -1635,6 +1663,15 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     flex: 1,
+  },
+  chartWrapper: {
+    width: '100%',
+  },
+  chartScrollView: {
+    width: '100%',
+  },
+  chartScrollContent: {
+    paddingHorizontal: 10,
   },
   chartContainer: {
     alignItems: 'center',
