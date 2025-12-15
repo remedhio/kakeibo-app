@@ -52,7 +52,7 @@ export default function AddEntryScreen() {
   const parentCategories = useMemo(() => {
     const parents = categories.filter((c) => c.type === type && c.parent_id === null);
     // 親カテゴリの順序を定義（支出）
-    const expenseParentOrder = ['固定費', '変動費', '投資'];
+    const expenseParentOrder = ['固定費', '変動費', '特別費', '投資'];
     // 親カテゴリの順序を定義（収入）
     const incomeParentOrder = ['給料', '貯金'];
 

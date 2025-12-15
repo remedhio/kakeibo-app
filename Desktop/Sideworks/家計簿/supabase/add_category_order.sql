@@ -11,7 +11,8 @@ update public.categories
 set "order" = case
   when name = '固定費' and type = 'expense' and parent_id is null then 1
   when name = '変動費' and type = 'expense' and parent_id is null then 2
-  when name = '投資' and type = 'expense' and parent_id is null then 3
+  when name = '特別費' and type = 'expense' and parent_id is null then 3
+  when name = '投資' and type = 'expense' and parent_id is null then 4
   else "order"
 end
 where type = 'expense' and parent_id is null;

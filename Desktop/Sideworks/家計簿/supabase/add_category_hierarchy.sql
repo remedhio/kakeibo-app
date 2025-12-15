@@ -1,5 +1,5 @@
 -- カテゴリ階層構造の追加
--- 支出カテゴリに「固定費」「変動費」「投資」という親カテゴリを追加し、
+-- 支出カテゴリに「固定費」「変動費」「投資」「特別費」という親カテゴリを追加し、
 -- その中に子カテゴリを配置できるようにする
 
 -- 1. parent_idカラムを追加（自己参照）
@@ -10,7 +10,7 @@ add column if not exists parent_id uuid references public.categories(id) on dele
 create index if not exists categories_parent_id_idx on public.categories(parent_id);
 create index if not exists categories_user_id_type_idx on public.categories(user_id, type) where parent_id is null;
 
--- 3. 既存のユーザーに対して、支出の親カテゴリ（固定費、変動費、投資）を作成
+-- 3. 既存のユーザーに対して、支出の親カテゴリ（固定費、変動費、投資、特別費）を作成
 -- 注意: このSQLは既存のユーザーごとに実行する必要があります
 -- アプリ側（categories.tsx）で自動的に作成するロジックも実装済みです
 
@@ -30,7 +30,7 @@ create index if not exists categories_user_id_type_idx on public.categories(user
 --   and categories.parent_id is null
 -- );
 
--- 同様に変動費と投資も作成:
+-- 同様に変動費、投資、特別費も作成:
 -- insert into public.categories (user_id, name, type, parent_id)
 -- select
 --   id as user_id,
@@ -57,6 +57,21 @@ create index if not exists categories_user_id_type_idx on public.categories(user
 --   select 1 from public.categories
 --   where categories.user_id = auth.users.id
 --   and categories.name = '投資'
+--   and categories.type = 'expense'
+--   and categories.parent_id is null
+-- );
+
+-- insert into public.categories (user_id, name, type, parent_id)
+-- select
+--   id as user_id,
+--   '特別費' as name,
+--   'expense' as type,
+--   null as parent_id
+-- from auth.users
+-- where not exists (
+--   select 1 from public.categories
+--   where categories.user_id = auth.users.id
+--   and categories.name = '特別費'
 --   and categories.type = 'expense'
 --   and categories.parent_id is null
 -- );

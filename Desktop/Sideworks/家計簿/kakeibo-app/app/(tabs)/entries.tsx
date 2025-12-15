@@ -73,7 +73,7 @@ export default function EntriesScreen() {
   const parentCategories = useMemo(() => {
     const parents = categories.filter((c) => c.type === type && c.parent_id === null);
     // 親カテゴリの順序を定義（支出）
-    const expenseParentOrder = ['固定費', '変動費', '投資'];
+    const expenseParentOrder = ['固定費', '変動費', '特別費', '投資'];
     // 親カテゴリの順序を定義（収入）
     const incomeParentOrder = ['給料', '貯金'];
 
@@ -96,11 +96,19 @@ export default function EntriesScreen() {
     });
   }, [categories, type]);
 
-  // 支出の親カテゴリのみ（固定費、変動費、投資）
-  const expenseParentCategories = useMemo(
-    () => categories.filter((c) => c.type === 'expense' && c.parent_id === null && ['固定費', '変動費', '投資'].includes(c.name)),
-    [categories]
-  );
+  // 支出の親カテゴリのみ（固定費、変動費、特別費、投資）を順序通りにソート
+  const expenseParentCategories = useMemo(() => {
+    const expenseParentOrder = ['固定費', '変動費', '特別費', '投資'];
+    const filtered = categories.filter((c) => c.type === 'expense' && c.parent_id === null && expenseParentOrder.includes(c.name));
+    return filtered.sort((a, b) => {
+      const indexA = expenseParentOrder.indexOf(a.name);
+      const indexB = expenseParentOrder.indexOf(b.name);
+      if (indexA === -1 && indexB === -1) return 0;
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+  }, [categories]);
 
   // 収入の親カテゴリのみ（給料、貯金）
   const incomeParentCategories = useMemo(
@@ -533,6 +541,9 @@ export default function EntriesScreen() {
             <Text style={selectedParentTab === null ? [styles.parentTabText, styles.parentTabTextActive] : styles.parentTabText}>
               すべて
             </Text>
+            <Text style={selectedParentTab === null ? styles.parentTabAmount : styles.parentTabAmountInactive}>
+              {formatCurrency(filterType === 'expense' ? totalExpense : filterType === 'income' ? totalIncome : totalIncome + totalExpense)}
+            </Text>
           </TouchableOpacity>
           {currentParentCategories.map((parent) => {
             const isActive = selectedParentTab === parent.id;
@@ -573,9 +584,34 @@ export default function EntriesScreen() {
               .map(([childName, amount]) => (
                 <View key={childName} style={styles.childSummaryRow}>
                   <Text style={styles.childSummaryName}>{childName}</Text>
-                  <Text style={styles.childSummaryAmount}>{formatCurrency(amount)}</Text>
+                  <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
+                    {formatCurrency(amount)}
+                  </Text>
                 </View>
               ))}
+          </View>
+        </View>
+      )}
+
+      {/* すべての親カテゴリの合計金額を表示（親カテゴリが選択されていない場合） */}
+      {!selectedParentTab && (filterType === 'expense' || filterType === 'income') && currentParentCategories.length > 0 && (
+        <View style={styles.parentSummary}>
+          <Text style={styles.parentSummaryTitle}>
+            {filterType === 'expense' ? '支出' : '収入'}カテゴリ別合計
+          </Text>
+          <View style={styles.childrenSummary}>
+            {currentParentCategories.map((parent) => {
+              const summary = currentParentCategorySummary[parent.id];
+              if (!summary || summary.total === 0) return null;
+              return (
+                <View key={parent.id} style={styles.childSummaryRow}>
+                  <Text style={styles.childSummaryName}>{parent.name}</Text>
+                  <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
+                    {formatCurrency(summary.total)}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         </View>
       )}
@@ -1243,16 +1279,16 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   parentTabAmount: {
-    fontSize: 11,
+    fontSize: 13,
     color: '#ffffff',
     marginTop: 4,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   parentTabAmountInactive: {
-    fontSize: 11,
+    fontSize: 13,
     color: '#6b7280',
     marginTop: 4,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   parentSummary: {
     backgroundColor: '#f9fafb',
@@ -1290,7 +1326,6 @@ const styles = StyleSheet.create({
   childSummaryAmount: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#22c55e',
   },
   formScrollView: {
     flex: 1,

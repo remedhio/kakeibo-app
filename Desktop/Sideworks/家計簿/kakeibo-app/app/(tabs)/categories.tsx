@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 
 import { Text, View } from '@/components/Themed';
 import { supabase } from '@/lib/supabaseClient';
@@ -26,6 +26,58 @@ export default function CategoriesScreen() {
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [parentId, setParentId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // エントリーを取得
+  type Entry = {
+    id: string;
+    category_id: string | null;
+    type: 'income' | 'expense';
+    amount: number;
+    happened_on: string;
+  };
+
+  const { data: entries = [] } = useQuery<Entry[]>({
+    queryKey: ['entries'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('entries')
+        .select('id, category_id, type, amount, happened_on')
+        .order('happened_on', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Entry[];
+    },
+    enabled: !!session,
+  });
+
+  // カテゴリごとの合計金額を計算
+  const categoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    entries.forEach(entry => {
+      if (entry.category_id) {
+        totals[entry.category_id] = (totals[entry.category_id] || 0) + entry.amount;
+      }
+    });
+    return totals;
+  }, [entries]);
+
+  // 親カテゴリごとの合計金額を計算（子カテゴリの合計を含む）
+  const parentCategoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    entries.forEach(entry => {
+      if (entry.category_id) {
+        const category = categories.find(c => c.id === entry.category_id);
+        if (category?.parent_id) {
+          totals[category.parent_id] = (totals[category.parent_id] || 0) + entry.amount;
+        }
+      }
+    });
+    return totals;
+  }, [entries, categories]);
+
+  // 通貨フォーマット関数
+  const formatCurrency = (amount: number) => {
+    return `¥${amount.toLocaleString()}`;
+  };
 
   // 親カテゴリと子カテゴリを分離
   const parentCategories = useMemo(
@@ -55,7 +107,7 @@ export default function CategoriesScreen() {
     const addedIds = new Set<string>();
 
     // 親カテゴリの順序を定義（支出）
-    const expenseParentOrder = ['固定費', '変動費', '投資'];
+    const expenseParentOrder = ['固定費', '変動費', '特別費', '投資'];
     // 親カテゴリの順序を定義（収入）
     const incomeParentOrder = ['給料', '貯金'];
 
@@ -140,11 +192,11 @@ export default function CategoriesScreen() {
     }
   }, [session]);
 
-  // 支出の親カテゴリ（固定費、変動費、投資）を確保
+  // 支出の親カテゴリ（固定費、変動費、投資、特別費）を確保
   const ensureExpenseParentCategories = async () => {
     if (!session?.user?.id) return;
 
-    const parentCategoryNames = ['固定費', '変動費', '投資'];
+    const parentCategoryNames = ['固定費', '変動費', '投資', '特別費'];
     const { data: existingParents } = await supabase
       .from('categories')
       .select('name')
@@ -227,7 +279,7 @@ export default function CategoriesScreen() {
 
     // 支出カテゴリで親カテゴリが選択されていない場合はエラー
     if (type === 'expense' && !parentId) {
-      Alert.alert('親カテゴリを選択してください', '支出カテゴリは「固定費」「変動費」「投資」のいずれかを選択してください');
+      Alert.alert('親カテゴリを選択してください', '支出カテゴリは「固定費」「変動費」「投資」「特別費」のいずれかを選択してください');
       return;
     }
 
@@ -289,10 +341,10 @@ export default function CategoriesScreen() {
     queryClient.invalidateQueries({ queryKey: ['categories'] });
   }, [name, type, parentId, editingId, session, resetForm, refresh, queryClient, categories]);
 
-  // 親カテゴリ（固定費、変動費、投資、給料、貯金）かどうかを判定
+  // 親カテゴリ（固定費、変動費、投資、特別費、給料、貯金）かどうかを判定
   const isParentCategory = useCallback((item: Category) => {
     if (item.parent_id !== null) return false;
-    if (item.type === 'expense' && ['固定費', '変動費', '投資'].includes(item.name)) return true;
+    if (item.type === 'expense' && ['固定費', '変動費', '投資', '特別費'].includes(item.name)) return true;
     if (item.type === 'income' && ['給料', '貯金'].includes(item.name)) return true;
     return false;
   }, []);
@@ -300,7 +352,7 @@ export default function CategoriesScreen() {
   const onEdit = useCallback((item: Category) => {
     // 親カテゴリは編集不可
     if (isParentCategory(item)) {
-      Alert.alert('編集不可', '親カテゴリ（固定費、変動費、投資）は編集できません');
+      Alert.alert('編集不可', '親カテゴリ（固定費、変動費、投資、特別費）は編集できません');
       return;
     }
     setEditingId(item.id);
@@ -663,6 +715,9 @@ export default function CategoriesScreen() {
     const canMoveUp = !isParentCategory(item) && currentIndex > 0;
     const canMoveDown = !isParentCategory(item) && currentIndex < siblings.length - 1;
 
+    // 合計金額を取得
+    const total = isChild ? categoryTotals[item.id] || 0 : parentCategoryTotals[item.id] || 0;
+
     return (
       <View style={[styles.item, isChild && styles.childItem]}>
         <View style={styles.itemLeft}>
@@ -673,6 +728,11 @@ export default function CategoriesScreen() {
             {item.type === 'expense' ? '支出' : '収入'}
             {parentName && ` / ${parentName}`}
           </Text>
+          {total > 0 && (
+            <Text style={[styles.itemTotal, item.type === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
+              合計: {formatCurrency(total)}
+            </Text>
+          )}
         </View>
         <View style={styles.itemActions}>
           {!isParentCategory(item) && (
@@ -705,7 +765,7 @@ export default function CategoriesScreen() {
         </View>
       </View>
     );
-  }, [categories, sorted, isParentCategory, onEdit, onDelete, moveCategory]);
+  }, [categories, sorted, isParentCategory, onEdit, onDelete, moveCategory, categoryTotals, parentCategoryTotals, formatCurrency]);
 
   return (
     <KeyboardAvoidingView
@@ -839,6 +899,17 @@ const styles = StyleSheet.create({
   itemType: {
     color: '#666',
     marginTop: 4,
+  },
+  itemTotal: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  incomeAmount: {
+    color: '#10b981',
+  },
+  expenseAmount: {
+    color: '#ef4444',
   },
   itemLeft: {
     flex: 1,
