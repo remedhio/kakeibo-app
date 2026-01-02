@@ -640,31 +640,40 @@ export default function EntriesScreen() {
             {currentParentCategorySummary[selectedParentTab].name}の合計: {formatCurrency(currentParentCategorySummary[selectedParentTab].total)}
           </Text>
           <View style={styles.childrenSummary}>
-            {Object.entries(currentParentCategorySummary[selectedParentTab].children)
-              .sort(([, a], [, b]) => b - a)
-              .map(([childName, amount]) => {
-                // 子カテゴリ名からカテゴリIDを取得
-                const childCategory = categories.find(
-                  c => c.name === childName && c.parent_id === selectedParentTab
-                );
-                return (
+            {(() => {
+              // 選択された親カテゴリの子カテゴリをorder順にソート
+              const childCategoriesForParent = categories
+                .filter(c => c.parent_id === selectedParentTab)
+                .sort((a, b) => {
+                  const orderA = a.order ?? 0;
+                  const orderB = b.order ?? 0;
+                  if (orderA !== orderB) return orderA - orderB;
+                  return a.name.localeCompare(b.name);
+                });
+
+              // order順にソートされた子カテゴリの順序で表示
+              return childCategoriesForParent
+                .map(childCategory => {
+                  const amount = currentParentCategorySummary[selectedParentTab].children[childCategory.name] || 0;
+                  return { childCategory, amount };
+                })
+                .filter(item => item.amount > 0) // 金額が0より大きいもののみ表示
+                .map(({ childCategory, amount }) => (
                   <TouchableOpacity
-                    key={childName}
+                    key={childCategory.id}
                     style={styles.childSummaryRow}
                     onPress={() => {
-                      if (childCategory) {
-                        setSelectedChildCategoryId(childCategory.id);
-                        setSelectedChildCategoryName(childName);
-                        setShowChildCategoryDetailModal(true);
-                      }
+                      setSelectedChildCategoryId(childCategory.id);
+                      setSelectedChildCategoryName(childCategory.name);
+                      setShowChildCategoryDetailModal(true);
                     }}>
-                    <Text style={styles.childSummaryName}>{childName}</Text>
+                    <Text style={styles.childSummaryName}>{childCategory.name}</Text>
                     <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
                       {formatCurrency(amount)}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
+                ));
+            })()}
           </View>
         </View>
       )}
@@ -676,18 +685,59 @@ export default function EntriesScreen() {
             {filterType === 'expense' ? '支出' : '収入'}カテゴリ別合計
           </Text>
           <View style={styles.childrenSummary}>
-            {currentParentCategories.map((parent) => {
-              const summary = currentParentCategorySummary[parent.id];
-              if (!summary || summary.total === 0) return null;
-              return (
-                <View key={parent.id} style={styles.childSummaryRow}>
-                  <Text style={styles.childSummaryName}>{parent.name}</Text>
-                  <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
-                    {formatCurrency(summary.total)}
-                  </Text>
-                </View>
-              );
-            })}
+            {(() => {
+              // すべての子カテゴリを取得し、order順にソート
+              const allChildCategories = categories
+                .filter(c => {
+                  if (filterType === 'expense') {
+                    return c.type === 'expense' && c.parent_id !== null &&
+                           currentParentCategories.some(p => p.id === c.parent_id);
+                  } else if (filterType === 'income') {
+                    return c.type === 'income' && c.parent_id !== null &&
+                           currentParentCategories.some(p => p.id === c.parent_id);
+                  }
+                  return false;
+                })
+                .sort((a, b) => {
+                  // まず親カテゴリの順序でソート
+                  const parentA = currentParentCategories.find(p => p.id === a.parent_id);
+                  const parentB = currentParentCategories.find(p => p.id === b.parent_id);
+                  if (parentA && parentB) {
+                    const indexA = currentParentCategories.indexOf(parentA);
+                    const indexB = currentParentCategories.indexOf(parentB);
+                    if (indexA !== indexB) return indexA - indexB;
+                  }
+                  // 同じ親カテゴリ内ではorder順にソート
+                  const orderA = a.order ?? 0;
+                  const orderB = b.order ?? 0;
+                  if (orderA !== orderB) return orderA - orderB;
+                  return a.name.localeCompare(b.name);
+                });
+
+              // order順にソートされた子カテゴリの順序で表示
+              return allChildCategories
+                .map(childCategory => {
+                  const parentSummary = currentParentCategorySummary[childCategory.parent_id!];
+                  const amount = parentSummary?.children[childCategory.name] || 0;
+                  return { childCategory, amount };
+                })
+                .filter(item => item.amount > 0) // 金額が0より大きいもののみ表示
+                .map(({ childCategory, amount }) => (
+                  <TouchableOpacity
+                    key={childCategory.id}
+                    style={styles.childSummaryRow}
+                    onPress={() => {
+                      setSelectedChildCategoryId(childCategory.id);
+                      setSelectedChildCategoryName(childCategory.name);
+                      setShowChildCategoryDetailModal(true);
+                    }}>
+                    <Text style={styles.childSummaryName}>{childCategory.name}</Text>
+                    <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
+                      {formatCurrency(amount)}
+                    </Text>
+                  </TouchableOpacity>
+                ));
+            })()}
           </View>
         </View>
       )}
