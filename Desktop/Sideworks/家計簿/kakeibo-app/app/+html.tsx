@@ -19,6 +19,9 @@ export default function Root({ children }: PropsWithChildren) {
         */}
         <ScrollViewStyleReset />
 
+        {/* Apple Touch Icon */}
+        <link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png" />
+
         {/* Add any additional <head> elements here, such as <link> tags for fonts, etc. */}
       </head>
       <body>{children}</body>
