@@ -52,6 +52,11 @@ export default function EntriesScreen() {
   // 親カテゴリごとのタブ表示用のstate
   const [selectedParentTab, setSelectedParentTab] = useState<string | null>(null);
 
+  // 子カテゴリの内訳表示用のstate
+  const [selectedChildCategoryId, setSelectedChildCategoryId] = useState<string | null>(null);
+  const [selectedChildCategoryName, setSelectedChildCategoryName] = useState<string | null>(null);
+  const [showChildCategoryDetailModal, setShowChildCategoryDetailModal] = useState(false);
+
   // 固定費の期間指定用
   const [isFixedExpense, setIsFixedExpense] = useState(false);
   const [startDate, setStartDate] = useState(new Date());
@@ -581,14 +586,29 @@ export default function EntriesScreen() {
           <View style={styles.childrenSummary}>
             {Object.entries(currentParentCategorySummary[selectedParentTab].children)
               .sort(([, a], [, b]) => b - a)
-              .map(([childName, amount]) => (
-                <View key={childName} style={styles.childSummaryRow}>
-                  <Text style={styles.childSummaryName}>{childName}</Text>
-                  <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
-                    {formatCurrency(amount)}
-                  </Text>
-                </View>
-              ))}
+              .map(([childName, amount]) => {
+                // 子カテゴリ名からカテゴリIDを取得
+                const childCategory = categories.find(
+                  c => c.name === childName && c.parent_id === selectedParentTab
+                );
+                return (
+                  <TouchableOpacity
+                    key={childName}
+                    style={styles.childSummaryRow}
+                    onPress={() => {
+                      if (childCategory) {
+                        setSelectedChildCategoryId(childCategory.id);
+                        setSelectedChildCategoryName(childName);
+                        setShowChildCategoryDetailModal(true);
+                      }
+                    }}>
+                    <Text style={styles.childSummaryName}>{childName}</Text>
+                    <Text style={[styles.childSummaryAmount, filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount]}>
+                      {formatCurrency(amount)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
           </View>
         </View>
       )}
@@ -1110,6 +1130,78 @@ export default function EntriesScreen() {
                   </Text>
                 </View>
               )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 子カテゴリの内訳モーダル */}
+      <Modal
+        visible={showChildCategoryDetailModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChildCategoryDetailModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedChildCategoryName || 'カテゴリ'}の内訳
+              </Text>
+              <TouchableOpacity onPress={() => setShowChildCategoryDetailModal(false)}>
+                <Text style={styles.modalCloseButton}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {selectedChildCategoryId && (() => {
+                // 選択された子カテゴリに属するエントリーを取得
+                const categoryEntries = entries.filter(
+                  entry => entry.category_id === selectedChildCategoryId
+                );
+                const totalAmount = categoryEntries.reduce((sum, e) => sum + e.amount, 0);
+
+                return (
+                  <View style={styles.categoryDetailContent}>
+                    <View style={styles.categoryDetailSummary}>
+                      <Text style={styles.categoryDetailSummaryLabel}>合計</Text>
+                      <Text style={[
+                        styles.categoryDetailSummaryAmount,
+                        filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount
+                      ]}>
+                        {formatCurrency(totalAmount)}
+                      </Text>
+                    </View>
+                    {categoryEntries.length > 0 ? (
+                      <View style={styles.categoryDetailEntries}>
+                        <Text style={styles.categoryDetailSectionTitle}>記録一覧</Text>
+                        {categoryEntries
+                          .sort((a, b) => b.happened_on.localeCompare(a.happened_on))
+                          .map((entry) => (
+                            <View key={entry.id} style={styles.categoryDetailEntry}>
+                              <View style={styles.categoryDetailEntryLeft}>
+                                <Text style={styles.categoryDetailEntryDate}>{entry.happened_on}</Text>
+                                {entry.note && (
+                                  <Text style={styles.categoryDetailEntryNote}>{entry.note}</Text>
+                                )}
+                              </View>
+                              <Text style={[
+                                styles.categoryDetailEntryAmount,
+                                filterType === 'expense' ? styles.expenseAmount : styles.incomeAmount
+                              ]}>
+                                {filterType === 'expense' ? '-' : '+'}{formatCurrency(entry.amount)}
+                              </Text>
+                            </View>
+                          ))}
+                      </View>
+                    ) : (
+                      <View style={styles.categoryDetailEmpty}>
+                        <Text style={styles.categoryDetailEmptyText}>
+                          このカテゴリの記録がありません
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
             </ScrollView>
           </View>
         </View>
@@ -1728,6 +1820,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyChartText: {
+    fontSize: 16,
+    color: '#9ca3af',
+  },
+  categoryDetailContent: {
+    gap: 20,
+  },
+  categoryDetailSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  categoryDetailSummaryLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  categoryDetailSummaryAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  categoryDetailEntries: {
+    gap: 12,
+  },
+  categoryDetailSectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  categoryDetailEntry: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  categoryDetailEntryLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  categoryDetailEntryDate: {
+    fontSize: 14,
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
+  categoryDetailEntryNote: {
+    fontSize: 15,
+    color: '#6b7280',
+  },
+  categoryDetailEntryAmount: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  categoryDetailEmpty: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  categoryDetailEmptyText: {
     fontSize: 16,
     color: '#9ca3af',
   },
