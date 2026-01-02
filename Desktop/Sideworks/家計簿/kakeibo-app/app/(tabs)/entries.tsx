@@ -41,6 +41,7 @@ export default function EntriesScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterMonth, setFilterMonth] = useState(new Date());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const amountInputRef = useRef<any>(null);
   const noteInputRef = useRef<any>(null);
 
@@ -402,6 +403,16 @@ export default function EntriesScreen() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   };
 
+  const formatMonth = (date: Date) => {
+    return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  };
+
+  const changeMonth = (delta: number) => {
+    const newDate = new Date(filterMonth);
+    newDate.setMonth(newDate.getMonth() + delta);
+    setFilterMonth(newDate);
+  };
+
   const formatCurrency = (amount: number) => {
     return `¥${amount.toLocaleString()}`;
   };
@@ -516,6 +527,51 @@ export default function EntriesScreen() {
   const renderHeader = useCallback(() => (
     <>
       <Text style={styles.title}>収支記録</Text>
+
+      {/* 月選択 */}
+      <View style={styles.monthSelectorContainer}>
+        <View style={styles.monthSelector}>
+          <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthButton}>
+            <Text style={styles.monthButtonText}>‹</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowMonthPicker(true)} style={styles.monthLabel}>
+            <Text style={styles.monthLabelText}>{formatMonth(filterMonth)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthButton}>
+            <Text style={styles.monthButtonText}>›</Text>
+          </TouchableOpacity>
+        </View>
+        {showMonthPicker && (
+          <>
+            {Platform.OS === 'web' ? (
+              <View style={styles.monthPickerWeb}>
+                <TextInput
+                  {...({ type: 'month' } as any)}
+                  value={`${filterMonth.getFullYear()}-${String(filterMonth.getMonth() + 1).padStart(2, '0')}`}
+                  onChangeText={(text) => {
+                    if (text) {
+                      const [year, month] = text.split('-');
+                      setFilterMonth(new Date(parseInt(year), parseInt(month) - 1));
+                      setShowMonthPicker(false);
+                    }
+                  }}
+                  style={styles.monthInputWeb}
+                />
+              </View>
+            ) : (
+              <DateTimePicker
+                value={filterMonth}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(event, date) => {
+                  setShowMonthPicker(Platform.OS === 'ios');
+                  if (date) setFilterMonth(date);
+                }}
+              />
+            )}
+          </>
+        )}
+      </View>
 
       <View style={styles.summary}>
         <View style={styles.summaryItem}>
@@ -663,9 +719,6 @@ export default function EntriesScreen() {
             <Text style={filterType === 'expense' ? styles.filterChipTextActive : styles.filterChipText}>支出</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.monthLabel}>
-          {filterMonth.getFullYear()}年{filterMonth.getMonth() + 1}月
-        </Text>
       </View>
 
       <Text style={styles.listTitle}>記録一覧</Text>
@@ -678,6 +731,7 @@ export default function EntriesScreen() {
     selectedParentTab,
     currentParentCategories,
     currentParentCategorySummary,
+    showMonthPicker,
   ]);
 
   return (
@@ -1302,6 +1356,11 @@ const styles = StyleSheet.create({
   filters: {
     gap: 12,
     marginBottom: 20,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   filterRow: {
     flexDirection: 'row',
@@ -1336,11 +1395,54 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
+  monthSelectorContainer: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  monthSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  monthButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+  },
+  monthButtonText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#2f95dc',
+  },
   monthLabel: {
-    fontSize: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  monthLabelText: {
+    fontSize: 18,
     fontWeight: '600',
     color: '#374151',
-    marginTop: 4,
+  },
+  monthPickerWeb: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  monthInputWeb: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 8,
+    fontSize: 16,
+    width: '100%',
+    maxWidth: 200,
   },
   parentTabs: {
     flexDirection: 'row',
