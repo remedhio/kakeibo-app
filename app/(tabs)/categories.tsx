@@ -13,19 +13,20 @@ import {
   TypeToggle,
 } from '@/components/ui';
 import { colors, fonts, layout, radius, spacing, typography } from '@/constants/theme';
+import {
+  CategoryRow,
+  collapseCategoriesForDisplay,
+  dedupeCategories,
+  ensureParentCategories,
+  fetchUserCategories,
+  hasSiblingNameConflict,
+} from '@/lib/categories';
 import { EXPENSE_PARENT_ORDER, INCOME_PARENT_ORDER, formatCurrency, sortParentCategories } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/providers/AuthProvider';
 import { useIsCompact } from '@/hooks/useIsCompact';
 
-type Category = {
-  id: string;
-  name: string;
-  type: 'income' | 'expense';
-  parent_id: string | null;
-  order: number | null;
-  user_id: string;
-};
+type Category = CategoryRow;
 
 type EntryTotal = {
   id: string;
@@ -65,13 +66,9 @@ export default function CategoriesScreen() {
     setLoading(true);
     setLoadError(false);
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .is('household_id', null);
-      if (error) throw error;
-      setCategories((data ?? []) as Category[]);
+      // Always collapse for display so duplicate parents never render even if DB delete failed
+      const data = collapseCategoriesForDisplay(await fetchUserCategories(session.user.id)).categories;
+      setCategories(data);
     } catch {
       setLoadError(true);
     } finally {
@@ -79,40 +76,26 @@ export default function CategoriesScreen() {
     }
   }, [session?.user?.id]);
 
-  const ensureParents = useCallback(async () => {
-    if (!session?.user?.id) return;
-    const { data } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .is('household_id', null)
-      .is('parent_id', null);
-    const existing = new Set((data ?? []).map((c: any) => `${c.type}:${c.name}`));
-    const toInsert: Array<{ name: string; type: string; parent_id: null; user_id: string; order: number }> = [];
-    EXPENSE_PARENT_ORDER.forEach((n, i) => {
-      if (!existing.has(`expense:${n}`)) {
-        toInsert.push({ name: n, type: 'expense', parent_id: null, user_id: session.user.id, order: i });
-      }
-    });
-    INCOME_PARENT_ORDER.forEach((n, i) => {
-      if (!existing.has(`income:${n}`)) {
-        toInsert.push({ name: n, type: 'income', parent_id: null, user_id: session.user.id, order: i });
-      }
-    });
-    if (toInsert.length) {
-      await supabase.from('categories').insert(toInsert);
-      await refresh();
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-    }
-  }, [session?.user?.id, refresh, queryClient]);
-
   useEffect(() => {
-    if (!session) return;
+    if (!session?.user?.id) return;
+    const userId = session.user.id;
     (async () => {
       await refresh();
-      await ensureParents();
+      try {
+        const deduped = await dedupeCategories(userId);
+        const ensured = await ensureParentCategories(userId);
+        if (deduped || ensured) {
+          await refresh();
+          queryClient.invalidateQueries({ queryKey: ['categories'] });
+          if (deduped) queryClient.invalidateQueries({ queryKey: ['entries'] });
+        }
+      } catch (e) {
+        console.warn('category init merge failed', e);
+        // still collapse whatever is in DB
+        await refresh();
+      }
     })();
-  }, [session, refresh, ensureParents]);
+  }, [session?.user?.id, refresh, queryClient]);
 
   const isParentCategory = (item: Category) => {
     if (item.parent_id !== null) return false;
@@ -177,6 +160,16 @@ export default function CategoriesScreen() {
     }
     if (!parentId) {
       Alert.alert('親カテゴリを選択してください');
+      return;
+    }
+    if (
+      hasSiblingNameConflict(categories, {
+        parentId,
+        name,
+        excludeId: editingId,
+      })
+    ) {
+      Alert.alert('同じ親カテゴリ内に同名のカテゴリがあります');
       return;
     }
     setSaving(true);

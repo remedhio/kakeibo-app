@@ -16,6 +16,7 @@ import {
   SummaryCards,
 } from '@/components/ui';
 import { colors, fonts, layout, radius, spacing, typography } from '@/constants/theme';
+import { loadUserCategories } from '@/lib/categories';
 import { formatCurrency, formatDate, formatMonth, monthRange, sortParentCategories, toISODate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/providers/AuthProvider';
@@ -45,14 +46,11 @@ export default function EntriesScreen() {
 
   const { start, end } = monthRange(filterMonth);
 
+  const userId = session?.user?.id;
   const { data: categories = [] } = useQuery<FormCategory[]>({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('categories').select('*');
-      if (error) throw error;
-      return (data ?? []) as FormCategory[];
-    },
-    enabled: !!session,
+    queryKey: ['categories', userId],
+    queryFn: async () => (await loadUserCategories(userId!)) as FormCategory[],
+    enabled: !!userId,
   });
 
   const {

@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { EntryForm, EntryFormValues, FormCategory } from '@/components/EntryForm';
 import { Button, ErrorState, LoadingState, Screen } from '@/components/ui';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
+import { loadUserCategories } from '@/lib/categories';
 import { generateMonthlyDates, toISODate } from '@/lib/format';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/providers/AuthProvider';
@@ -15,14 +16,11 @@ export default function AddEntryScreen() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
+  const userId = session?.user?.id;
   const { data: categories = [], isLoading, isError, refetch } = useQuery<FormCategory[]>({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('categories').select('*');
-      if (error) throw error;
-      return (data ?? []) as FormCategory[];
-    },
-    enabled: !!session,
+    queryKey: ['categories', userId],
+    queryFn: async () => (await loadUserCategories(userId!)) as FormCategory[],
+    enabled: !!userId,
   });
 
   const createMutation = useMutation({

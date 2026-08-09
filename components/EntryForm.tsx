@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button, Chip, ChipScrollRow, DateField, TextField, TypeToggle } from '@/components/ui';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
+import { collapseCategoriesForDisplay } from '@/lib/categories';
 import { sortParentCategories } from '@/lib/format';
 
 export type FormCategory = {
@@ -70,9 +71,21 @@ export function EntryForm({
     if (initial.endDate) setEndDate(initial.endDate);
   }, [initial]);
 
+  const { categories: displayCategories, idMap } = useMemo(
+    () => collapseCategoriesForDisplay(categories),
+    [categories]
+  );
+
+  const resolvedParentId = selectedParentId ? idMap.get(selectedParentId) ?? selectedParentId : null;
+  const resolvedCategoryId = categoryId ? idMap.get(categoryId) ?? categoryId : null;
+
   const parentCategories = useMemo(
-    () => sortParentCategories(categories.filter((c) => c.type === type && c.parent_id === null), type),
-    [categories, type]
+    () =>
+      sortParentCategories(
+        displayCategories.filter((c) => c.type === type && c.parent_id === null),
+        type
+      ),
+    [displayCategories, type]
   );
 
   const fixedExpenseParentId = useMemo(
@@ -81,11 +94,11 @@ export function EntryForm({
   );
 
   const filteredCategories = useMemo(() => {
-    if (!selectedParentId) return [];
-    return categories
-      .filter((c) => c.type === type && c.parent_id === selectedParentId)
+    if (!resolvedParentId) return [];
+    return displayCategories
+      .filter((c) => c.type === type && c.parent_id === resolvedParentId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name, 'ja'));
-  }, [categories, selectedParentId, type]);
+  }, [displayCategories, resolvedParentId, type]);
 
   const handleTypeChange = (next: 'income' | 'expense') => {
     setType(next);
@@ -102,7 +115,7 @@ export function EntryForm({
 
   const handleChildSelect = (id: string) => {
     setCategoryId(id);
-    if (allowFixedExpense && selectedParentId === fixedExpenseParentId) {
+    if (allowFixedExpense && resolvedParentId === fixedExpenseParentId) {
       setIsFixedExpense(true);
     }
   };
@@ -112,8 +125,8 @@ export function EntryForm({
       type,
       amount,
       note,
-      categoryId,
-      selectedParentId,
+      categoryId: resolvedCategoryId,
+      selectedParentId: resolvedParentId,
       selectedDate,
       isFixedExpense: allowFixedExpense && isFixedExpense,
       startDate,
@@ -145,7 +158,7 @@ export function EntryForm({
         placeholder="0"
       />
 
-      {!selectedParentId ? (
+      {!resolvedParentId ? (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>カテゴリ</Text>
           <ChipScrollRow>
@@ -162,7 +175,7 @@ export function EntryForm({
               <Chip
                 key={c.id}
                 label={c.name}
-                selected={categoryId === c.id}
+                selected={resolvedCategoryId === c.id}
                 onPress={() => handleChildSelect(c.id)}
               />
             ))}
