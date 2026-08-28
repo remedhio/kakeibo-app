@@ -1,9 +1,15 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Redirect } from 'expo-router';
 import { Screen } from '@/components/ui';
 import { colors, fonts, spacing, typography } from '@/constants/theme';
+import { useAuth } from '@/providers/AuthProvider';
 
 export default function ModalScreen() {
+  const { session, loading } = useAuth();
+  if (!loading && !session) {
+    return <Redirect href="/sign-in" />;
+  }
   return (
     <Screen>
       <View style={styles.content}>

@@ -1,37 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Button, Screen, TextField } from '@/components/ui';
 import { colors, fonts, spacing, typography } from '@/constants/theme';
+import { LOGIN_ERROR_MESSAGE, RESET_EMAIL_SENT_MESSAGE, isValidEmail } from '@/lib/auth';
 import { useAuth } from '@/providers/AuthProvider';
 import { useIsCompact } from '@/hooks/useIsCompact';
 
 export default function SignInScreen() {
-  const { signIn, session, loading } = useAuth();
+  const { signIn, requestPasswordReset, loading } = useAuth();
   const compact = useIsCompact();
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (session) router.replace('/(tabs)/add');
-  }, [session, router]);
-
-  if (session) return null;
+  const [resetting, setResetting] = useState(false);
 
   const onSignIn = async () => {
-    if (!email || !password) {
-      Alert.alert('メールとパスワードを入力してください');
+    const trimmedEmail = email.trim();
+    if (!isValidEmail(trimmedEmail) || !password) {
+      Alert.alert(LOGIN_ERROR_MESSAGE);
       return;
     }
     setSubmitting(true);
     try {
-      await signIn({ email, password });
-    } catch (e: any) {
-      Alert.alert('ログインに失敗しました', e?.message ?? 'もう一度お試しください');
+      await signIn({ email: trimmedEmail, password });
+    } catch {
+      Alert.alert('ログインに失敗しました', LOGIN_ERROR_MESSAGE);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      Alert.alert('メールアドレスを入力してください', '再設定リンクの送り先を入力してください。');
+      return;
+    }
+    setResetting(true);
+    try {
+      await requestPasswordReset(trimmedEmail);
+    } finally {
+      setResetting(false);
+      Alert.alert('メールを確認してください', RESET_EMAIL_SENT_MESSAGE);
     }
   };
 
@@ -45,6 +55,7 @@ export default function SignInScreen() {
         <TextField
           label="メールアドレス"
           autoCapitalize="none"
+          autoComplete="email"
           keyboardType="email-address"
           placeholder="you@example.com"
           value={email}
@@ -53,11 +64,19 @@ export default function SignInScreen() {
         <TextField
           label="パスワード"
           secureTextEntry
+          autoComplete="password"
           placeholder="パスワード"
           value={password}
           onChangeText={setPassword}
         />
         <Button title="ログイン" onPress={onSignIn} loading={loading || submitting} />
+        <Button
+          title="パスワードを忘れた"
+          variant="ghost"
+          onPress={onForgotPassword}
+          loading={resetting}
+          disabled={submitting}
+        />
       </View>
     </Screen>
   );

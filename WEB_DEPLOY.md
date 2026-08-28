@@ -155,18 +155,22 @@ Web版をデプロイする際は、Supabaseの認証設定でリダイレクト
 1. Supabaseダッシュボードにログイン
 2. Authentication → URL Configuration に移動
 3. "Redirect URLs" に以下を追加：
-   - 本番URL: `https://your-domain.com/**`
-   - プレビューURL（Vercelの場合）: `https://your-project.vercel.app/**`
-   - ローカル開発: `http://localhost:8081/**`（Expo Webのデフォルトポート）
+   - 本番: `https://your-domain.com/**`
+   - プレビュー（Vercel）: `https://your-project.vercel.app/**`
+   - ローカル: `http://localhost:8081/**`
+   - パスワード再設定の戻り先は `/reset-password` です
 
 これにより、Web版での認証フローが正しく動作します。
 
 ## セキュリティに関する注意
 
-- SupabaseのRow Level Security (RLS) が正しく設定されているか確認
+詳細な手順は [SECURITY.md](SECURITY.md) を参照してください。
+
+- 新規登録（Allow new users to sign up）をオフにする
+- データベースパスワードをリポジトリに書かない。過去に漏れた場合はローテーションする
+- Row Level Security (RLS) と `supabase/migrations/` の権限締め付けを適用する
 - 環境変数は公開リポジトリにコミットしない（`.env` は `.gitignore` に含まれている）
-- 本番環境では、Supabaseの認証設定を適切に構成
-- リダイレクトURLは本番環境のドメインのみを許可（セキュリティのため）
+- Redirect URLs に本番・プレビュー・ローカルを登録する（パスワード再設定用。パスは `/reset-password`）
 
 ## 参考リンク
 

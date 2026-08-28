@@ -37,12 +37,15 @@ export default function DashboardScreen() {
   const month = selectedMonth.getMonth() + 1;
   const { start: startDate, end: endDate } = monthRange(selectedMonth);
 
+  const userId = session?.user?.id;
   const { data: entries = [], isLoading, isError, refetch } = useQuery<Entry[]>({
-    queryKey: ['entries', 'dashboard', year, month],
+    queryKey: ['entries', 'dashboard', userId, year, month],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('entries')
         .select('id, type, amount, happened_on, note, categories(name)')
+        .eq('user_id', userId!)
+        .is('household_id', null)
         .gte('happened_on', startDate)
         .lte('happened_on', endDate)
         .order('happened_on', { ascending: false });
@@ -55,7 +58,7 @@ export default function DashboardScreen() {
             : entry.categories,
       })) as Entry[];
     },
-    enabled: !!session,
+    enabled: !!userId,
   });
 
   const monthlySummary = useMemo(() => {
