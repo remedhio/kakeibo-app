@@ -150,17 +150,15 @@ netlify deploy --prod
 
 ## Supabase認証設定（重要）
 
-Web版をデプロイする際は、Supabaseの認証設定でリダイレクトURLを追加する必要があります：
+パスワード再設定メールは `/reset-password` に戻ります。手順と貼る値の詳細は [SECURITY.md](SECURITY.md) の「3. Site URL と Redirect URLs」を見てください。
 
-1. Supabaseダッシュボードにログイン
-2. Authentication → URL Configuration に移動
-3. "Redirect URLs" に以下を追加：
-   - 本番: `https://your-domain.com/**`
-   - プレビュー（Vercel）: `https://your-project.vercel.app/**`
-   - ローカル: `http://localhost:8081/**`
-   - パスワード再設定の戻り先は `/reset-password` です
+いまの本番ホストを使う場合の最短設定:
 
-これにより、Web版での認証フローが正しく動作します。
+- **Site URL:** `https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app`
+- **Redirect URLs:**
+  - `https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app/reset-password`
+  - `https://kakeibo-*-remedhos-projects.vercel.app/**`（プレビュー・再デプロイ用）
+  - `http://localhost:8081/**`
 
 ## セキュリティに関する注意
 

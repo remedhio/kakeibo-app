@@ -24,16 +24,67 @@
 
 ユーザーを追加したくなったら、一時的にサインアップをオンにするか、Authentication → Users から招待します。
 
-### 3. パスワード再設定用 URL（必須）
+### 3. Site URL と Redirect URLs（必須）
 
-1. [URL Configuration](https://supabase.com/dashboard/project/rnycpllyfzndomosxhrb/auth/url-configuration) を開く
-2. Site URL を本番ドメインにする（例: `https://your-domain.com`）
-3. Redirect URLs に次を追加する
-   - `https://your-domain.com/**`
-   - `https://your-project.vercel.app/**`（プレビュー）
-   - `http://localhost:8081/**`（ローカル）
+パスワード再設定メールのリンク先は、アプリが `redirectTo` に渡す URL です。いまの実装では **今開いているサイトの origin + `/reset-password`** になります。
 
-再設定メールのリンクは `/reset-password` に戻ります。
+例（本番で「パスワードを忘れた」を押した場合）:
+
+```
+https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app/reset-password
+```
+
+Supabase は、この URL が **Redirect URLs の許可リストに一致しないとメールリンクを拒否**します。Site URL は、許可リストに載っていないときやメールテンプレートのデフォルト戻り先です。
+
+#### 3-1. 画面を開く
+
+1. [URL Configuration](https://supabase.com/dashboard/project/rnycpllyfzndomosxhrb/auth/url-configuration) を開く  
+   （左メニュー Authentication → URL Configuration）
+2. 上の **Site URL** と、下の **Redirect URLs** を別々に設定する
+
+#### 3-2. Site URL（1つだけ）
+
+**Site URL** に次をそのまま貼る（末尾スラッシュなし）:
+
+```
+https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app
+```
+
+Save する。
+
+注意: `kakeibo-npgsq2e5v-...` の `npgsq2e5v` は **そのデプロイ専用の ID** です。Vercel で再デプロイすると URL が変わります。安定した本番ドメイン（Vercel → プロジェクト → Settings → Domains。例: `https://kakeibo-app.vercel.app` やカスタムドメイン）がある場合は、**そちらを Site URL にする**方がよいです。そのときは下の Redirect URLs も、そのドメインに合わせて追加してください。
+
+#### 3-3. Redirect URLs（複数）
+
+**Redirect URLs** に、次を **1行ずつ Add** する。`*` や `**` はそのまま入力する（ワイルドカード）。
+
+| 用途 | 貼る値 |
+|------|--------|
+| 本番（今回のデプロイ）の再設定画面 | `https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app/reset-password` |
+| 今後の Vercel デプロイ・プレビュー（ID が変わっても通す） | `https://kakeibo-*-remedhos-projects.vercel.app/**` |
+| ローカル（`npm run web` / `npm start` の既定ポート） | `http://localhost:8081/**` |
+
+任意で足してよいもの:
+
+| 用途 | 貼る値 |
+|------|--------|
+| ポートが 8081 以外になったとき | `http://localhost:8082/**` |
+| 安定本番ドメインがあるとき | `https://（Domainsに出ている本番ホスト）/reset-password` |
+
+Save する。
+
+`**` はパス全体（`/reset-password` 含む）にマッチします。本番だけ exact パス、プレビューはワイルドカード、という分け方です。
+
+#### 3-4. 動きの確認
+
+1. 本番サイトを開く
+2. サインイン画面で自分のメールを入れ、「パスワードを忘れた」を押す
+3. メールのリンク先が  
+   `https://kakeibo-npgsq2e5v-remedhos-projects.vercel.app/reset-password`  
+   になっていること
+4. リンクを開くと「新しいパスワードを設定」画面になること
+
+リンクを開いてエラーになる場合は、Redirect URLs の行が上表と一字一句同じか（`https`、末尾 `/**`、ホスト名）を確認してください。
 
 ### 4. データベース権限の適用
 
