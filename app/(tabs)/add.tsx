@@ -98,7 +98,7 @@ export default function AddEntryScreen() {
           <View style={styles.success}>
             <Text style={styles.successText}>✓ 記録を追加しました</Text>
             <View style={styles.successActions}>
-              <Button title="ダッシュボードへ" variant="secondary" onPress={() => router.push('/(tabs)/')} style={styles.successBtn} />
+              <Button title="ダッシュボードへ" variant="secondary" onPress={() => router.push('/(tabs)')} style={styles.successBtn} />
               <Button title="収支を見る" variant="secondary" onPress={() => router.push('/(tabs)/entries')} style={styles.successBtn} />
             </View>
           </View>
