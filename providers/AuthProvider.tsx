@@ -1,87 +1,118 @@
-import { useRouter } from 'expo-router';
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
+import type { Session, User } from '@supabase/supabase-js';
 
+import { LOGIN_ERROR_MESSAGE, authRedirectUrl } from '@/lib/auth';
 import { supabase } from '@/lib/supabaseClient';
 
 type AuthContextValue = {
   loading: boolean;
-  session: import('@supabase/supabase-js').Session | null;
-  user: import('@supabase/supabase-js').User | null;
+  passwordRecovery: boolean;
+  session: Session | null;
+  user: User | null;
   signIn: (params: { email: string; password: string }) => Promise<void>;
-  signUp: (params: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function isInvalidSessionError(error: { status?: number; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.status === 401 || error.status === 403) return true;
+  const message = (error.message ?? '').toLowerCase();
+  return message.includes('invalid') && (message.includes('jwt') || message.includes('token') || message.includes('session'));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
-  const router = useRouter();
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     const init = async () => {
       const { data, error } = await supabase.auth.getSession();
-      if (!error) {
-        setSession(data.session);
+      if (error || !data.session) {
+        setSession(null);
+        setLoading(false);
+        return;
       }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        if (isInvalidSessionError(userError)) {
+          await supabase.auth.signOut();
+          setSession(null);
+        } else {
+          setSession(data.session);
+        }
+        setLoading(false);
+        return;
+      }
+
+      setSession({ ...data.session, user: userData.user });
       setLoading(false);
     };
     init();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+      }
+      if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        setPasswordRecovery(false);
+      }
       setSession(newSession);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn: AuthContextValue['signIn'] = async ({ email, password }) => {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
+  const signIn = useCallback(async ({ email, password }: { email: string; password: string }) => {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) {
-      Alert.alert('ログインに失敗しました', error.message);
-      return;
+      throw new Error(LOGIN_ERROR_MESSAGE);
     }
-    router.replace('/(tabs)/add');
-  };
+  }, []);
 
-  const signUp: AuthContextValue['signUp'] = async ({ email, password }) => {
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
-    if (error) {
-      Alert.alert('登録に失敗しました', error.message);
-      return;
-    }
-    Alert.alert('確認メールを送信しました', 'メール内のリンクを確認してください。');
-  };
-
-  const signOut: AuthContextValue['signOut'] = async () => {
-    setLoading(true);
+  const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
-    setLoading(false);
+    setPasswordRecovery(false);
     if (error) {
-      Alert.alert('ログアウトに失敗しました', error.message);
+      Alert.alert('ログアウトに失敗しました', '通信状況を確認して、もう一度お試しください');
       return;
     }
-    router.replace('/sign-in');
-  };
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: authRedirectUrl('/reset-password'),
+    });
+  }, []);
+
+  const updatePassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      throw new Error('パスワードの更新に失敗しました。リンクの有効期限を確認してください。');
+    }
+    setPasswordRecovery(false);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
+      passwordRecovery,
       session,
       user: session?.user ?? null,
       signIn,
-      signUp,
       signOut,
+      requestPasswordReset,
+      updatePassword,
     }),
-    [loading, session]
+    [loading, passwordRecovery, session, signIn, signOut, requestPasswordReset, updatePassword]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

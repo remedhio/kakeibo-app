@@ -48,17 +48,20 @@ export default function CategoriesScreen() {
   const [parentId, setParentId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const userId = session?.user?.id;
   const { data: entries = [] } = useQuery<EntryTotal[]>({
-    queryKey: ['entries'],
+    queryKey: ['entries', userId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('entries')
         .select('id, category_id, type, amount, happened_on')
+        .eq('user_id', userId!)
+        .is('household_id', null)
         .order('happened_on', { ascending: false });
       if (error) throw error;
       return (data ?? []) as EntryTotal[];
     },
-    enabled: !!session,
+    enabled: !!userId,
   });
 
   const refresh = useCallback(async () => {

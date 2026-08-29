@@ -59,11 +59,13 @@ export default function EntriesScreen() {
     isError,
     refetch,
   } = useQuery<Entry[]>({
-    queryKey: ['entries', filterType, start],
+    queryKey: ['entries', userId, filterType, start],
     queryFn: async () => {
       let q = supabase
         .from('entries')
         .select('*, categories(name, parent_id)')
+        .eq('user_id', userId!)
+        .is('household_id', null)
         .gte('happened_on', start)
         .lte('happened_on', end)
         .order('happened_on', { ascending: false })
@@ -79,15 +81,17 @@ export default function EntriesScreen() {
             : entry.categories,
       })) as Entry[];
     },
-    enabled: !!session,
+    enabled: !!userId,
   });
 
   const { data: monthlyCategoryData = [] } = useQuery({
-    queryKey: ['categoryMonthlyData', selectedCategoryId],
+    queryKey: ['categoryMonthlyData', userId, selectedCategoryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('entries')
         .select('amount, happened_on, type')
+        .eq('user_id', userId!)
+        .is('household_id', null)
         .eq('category_id', selectedCategoryId!);
       if (error) throw error;
       const map = new Map<string, number>();
@@ -99,7 +103,7 @@ export default function EntriesScreen() {
         .map(([month, amount]) => ({ month, amount }))
         .sort((a, b) => a.month.localeCompare(b.month));
     },
-    enabled: !!selectedCategoryId && !!session,
+    enabled: !!selectedCategoryId && !!userId,
   });
 
   useEffect(() => {

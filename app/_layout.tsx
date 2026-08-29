@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
+import { AuthGate } from '@/providers/AuthGate';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { colors } from '@/constants/theme';
 
@@ -29,7 +30,7 @@ const AppTheme = {
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: 'sign-in',
 };
 
 SplashScreen.preventAutoHideAsync();
@@ -62,20 +63,30 @@ function RootLayoutNav() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ThemeProvider value={AppTheme}>
-            <Stack
-              screenOptions={{
-                headerStyle: { backgroundColor: colors.canvas },
-                headerTintColor: colors.ink,
-                headerShadowVisible: false,
-                contentStyle: { backgroundColor: colors.canvas },
-              }}>
-              <Stack.Screen name="sign-in" options={{ title: 'サインイン', headerShown: false }} />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="modal" options={{ presentation: 'modal', title: '使い方' }} />
-            </Stack>
+            <AppStack />
           </ThemeProvider>
         </AuthProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AppStack() {
+  return (
+    <>
+      <AuthGate />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.canvas },
+          headerTintColor: colors.ink,
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: colors.canvas },
+        }}>
+        <Stack.Screen name="sign-in" options={{ title: 'サインイン', headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ title: 'パスワード再設定', headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: '使い方' }} />
+      </Stack>
+    </>
   );
 }

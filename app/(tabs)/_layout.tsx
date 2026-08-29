@@ -4,7 +4,6 @@ import { Link, Redirect, Tabs } from 'expo-router';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { LoadingState } from '@/components/ui';
 import { colors, fonts, spacing } from '@/constants/theme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useAuth } from '@/providers/AuthProvider';
@@ -63,12 +62,8 @@ function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
-  const { session, loading } = useAuth();
+  const { session } = useAuth();
   const headerShown = useClientOnlyValue(false, true);
-
-  if (loading) {
-    return <LoadingState message="認証を確認中..." />;
-  }
 
   if (!session) {
     return <Redirect href="/sign-in" />;

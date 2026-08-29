@@ -34,9 +34,14 @@ function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
   return map;
 }
 
-async function reassignEntries(fromIds: string[], toId: string): Promise<boolean> {
+async function reassignEntries(fromIds: string[], toId: string, userId: string): Promise<boolean> {
   if (!fromIds.length) return true;
-  const { error } = await supabase.from('entries').update({ category_id: toId }).in('category_id', fromIds);
+  const { error } = await supabase
+    .from('entries')
+    .update({ category_id: toId })
+    .in('category_id', fromIds)
+    .eq('user_id', userId)
+    .is('household_id', null);
   if (error) {
     console.warn('reassignEntries failed', error.message);
     return false;
@@ -77,7 +82,7 @@ async function mergeSiblingGroup(siblings: CategoryRow[], userId: string): Promi
   const canonical = pickCanonical(siblings);
   const dupes = siblings.filter((c) => c.id !== canonical.id);
   const dupeIds = dupes.map((c) => c.id);
-  await reassignEntries(dupeIds, canonical.id);
+  await reassignEntries(dupeIds, canonical.id, userId);
   await deleteCategories(dupeIds, userId);
   return true;
 }
@@ -245,7 +250,7 @@ export async function dedupeCategories(userId: string): Promise<boolean> {
       }
 
       // Entries pointing at duplicate parents → canonical
-      await reassignEntries(dupeIds, canonical.id);
+      await reassignEntries(dupeIds, canonical.id, userId);
       await deleteCategories(dupeIds, userId);
       changed = true;
 

@@ -15,10 +15,10 @@
 1. Supabaseダッシュボードにログイン
 2. 左サイドバーの「SQL Editor」をクリック
 3. 「New query」をクリック
-4. `supabase/add_category_hierarchy.sql` の内容をコピーして貼り付け
-5. 「Run」ボタンをクリック（または `Cmd+Enter` / `Ctrl+Enter`）
+4. `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` を SQL Editor で実行する（未ログインからのテーブルアクセスを閉じる）
+5. 初回セットアップでカテゴリ階層が未適用なら、従来どおり `parent_id` 追加用の SQL を実行する
 
-これで、`categories`テーブルに`parent_id`カラムが追加されます。
+詳細は [SECURITY.md](SECURITY.md) を参照。
 
 ## ステップ2: 環境変数の確認
 
