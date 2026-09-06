@@ -82,7 +82,17 @@ npx expo export --platform web && npx serve dist
 5. 環境変数を設定（上記参照）
 6. "Deploy" をクリック
 
-Vercelは自動的に `vercel.json` の設定を読み込みます。
+Vercel はリポジトリ直下の `vercel.json` を読み込みます。ダッシュボード側は次と揃えてください。
+
+| 項目 | 推奨値 |
+|------|--------|
+| Framework Preset | `Other`（Auto / Next.js などは使わない） |
+| Root Directory | 空欄（`package.json` はリポジトリ直下） |
+| Build Command | `npm run build`（`npm install` は含めない。Vercel が先に実行する） |
+| Output Directory | `dist` |
+| Install Command | デフォルトのまま（Override OFF） |
+
+Override を使うなら Build / Output を上表どおりにする。使わないならトグルを OFF にして `vercel.json` に任せる。どちらでも、ダッシュボードと `vercel.json` が食い違うと短いビルド（数十 ms）で終わり 404 になる。
 
 #### 方法2: Vercel CLI
 
@@ -131,22 +141,62 @@ netlify deploy --prod
 
 ## トラブルシューティング
 
-### ビルドエラー
+以前は Vercel 向けの障害メモが複数ファイルに分かれていた。内容はここに集約した。
 
-- Node.jsのバージョンを確認（推奨: 18以上）
+### ビルドエラー（ローカル）
+
+- Node.js のバージョンを確認（推奨: 18以上）
 - `npm install` を実行して依存関係を再インストール
 - `node_modules` と `dist` を削除して再ビルド
 
 ### 環境変数が反映されない
 
 - 環境変数名が `EXPO_PUBLIC_` で始まっているか確認
-- デプロイ後に再ビルドが必要な場合があります
-- ブラウザのキャッシュをクリア
+- Production / Preview / Development すべてに入っているか確認
+- 変更後は再デプロイが必要。ブラウザキャッシュもクリアする
 
 ### ルーティングエラー（404）
 
-- `vercel.json` または `netlify.toml` のリダイレクト設定を確認
-- SPA（Single Page Application）として正しく設定されているか確認
+- `vercel.json` または `netlify.toml` の SPA rewrite を確認
+- ビルドが実際に完了し、`dist` が成果物になっているか確認（次項）
+
+### Vercel のビルドが数十 ms で終わる / `vercel.json` が無視される
+
+ログが次のようなときは、Expo の export が走っていない。
+
+```
+Running "vercel build"
+Build Completed in /vercel/output [50ms]
+```
+
+正常時は数分かかり、`Running "npm run build"` と `Exporting for web...` が出る。
+
+1. Settings → General → Framework Preset を **Other** にする
+2. Build Command / Output Directory を上表どおりにするか、Override を OFF にして `vercel.json` を使う
+3. Root Directory は空欄（リポジトリ直下に `package.json` がある）
+4. Redeploy 時に **Use existing Build Cache を外す**
+5. `buildCommand` に `npm install` や `npm ci` を書かない（二重インストールになる）
+
+ダッシュボードの Override は `vercel.json` より優先される。食い違いがあるときは、ダッシュボード側を `npm run build` / `dist` に合わせて Override ON にする方が確実なことがある。
+
+### `package.json` が見つからない
+
+```
+npm error path /vercel/path0/package.json
+npm error enoent Could not read package.json
+```
+
+GitHub リポジトリ直下に `package.json`・`vercel.json`・`app/` があるかを確認する。あるなら Vercel の Root Directory は空欄にする。過去にネストしたディレクトリごと push していた時期があるが、現在のリポジトリはルートがプロジェクト本体である。
+
+### Vercel プロジェクトの再作成（最終手段）
+
+設定を直しても `package.json` が見つからない、またはビルドが走らないときは、プロジェクトを消して GitHub から再インポートする。
+
+1. Settings → General 最下部で Delete Project
+2. New Project → `kakeibo-app` を Import
+3. Framework Preset: Other、Root Directory: 空欄、Build: `npm run build`、Output: `dist`
+4. `EXPO_PUBLIC_SUPABASE_URL` と `EXPO_PUBLIC_SUPABASE_ANON_KEY` を全環境に入れ直す
+5. Deploy
 
 ## Supabase認証設定（重要）
 
