@@ -1,0 +1,21 @@
+-- DRAFT — do NOT apply to production yet.
+--
+-- Purpose: prevent duplicate categories at the database layer so lib/categories.ts
+-- dedupe logic can be retired after a one-time data cleanup migration.
+--
+-- Prerequisites:
+--   1. Run dedupeCategories / manual cleanup on existing data
+--   2. Verify no duplicate rows remain
+--   3. Rename this file (drop .example) and apply via SQL Editor or Supabase CLI
+--
+-- Reverse-engineered parent names: 固定費, 変動費, 特別費, 投資 (expense); 給料, 貯金 (income)
+
+-- Parent categories: unique per user when household_id IS NULL
+-- create unique index if not exists categories_unique_parent_personal
+--   on public.categories (user_id, type, name)
+--   where parent_id is null and household_id is null;
+
+-- Child categories: unique per parent per user when household_id IS NULL
+-- create unique index if not exists categories_unique_child_personal
+--   on public.categories (user_id, parent_id, name)
+--   where parent_id is not null and household_id is null;

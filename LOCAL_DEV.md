@@ -6,17 +6,20 @@
 - Supabase プロジェクトが作成済みであること
 - 環境変数（`.env`ファイル）が設定されていること
 
-## ステップ1: データベースマイグレーションの実行
+## ステップ1: データベーススキーマの適用
 
-カテゴリ階層構造を使用するため、まずデータベースに`parent_id`カラムを追加する必要があります。
-
-### Supabaseでマイグレーションを実行
+### 新規プロジェクト（テーブルがまだない場合）
 
 1. Supabaseダッシュボードにログイン
 2. 左サイドバーの「SQL Editor」をクリック
-3. 「New query」をクリック
-4. `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` を SQL Editor で実行する（未ログインからのテーブルアクセスを閉じる）
-5. 初回セットアップでカテゴリ階層が未適用なら、従来どおり `parent_id` 追加用の SQL を実行する
+3. `supabase/schema.sql` を実行する（テーブル・`parent_id` / `order` カラム・RLS を含む）
+4. 続けて `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` を実行する
+
+手順の詳細は [SETUP.md](SETUP.md) のステップ3を参照してください。
+
+### 既存プロジェクト（テーブルはあるが権限締めが未適用の場合）
+
+1. SQL Editor で `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` だけを実行する
 
 詳細は [SECURITY.md](SECURITY.md) を参照。
 

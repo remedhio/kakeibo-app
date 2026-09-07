@@ -56,13 +56,23 @@
 3. SupabaseのSQL Editorに貼り付け
 4. 右下の「Run」ボタンをクリック（または `Cmd+Enter` / `Ctrl+Enter`）
 
-### 3-3. 実行結果の確認
+`schema.sql` はテーブル・ビュー・RLS・インデックスをまとめて作成します。アプリが参照するカラム（`categories.parent_id` / `categories.order` など）も含まれます。
+
+### 3-3. 権限マイグレーションを実行
+
+1. SQL Editor で新しいクエリを開く
+2. `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` の内容をコピーして貼り付け
+3. 「Run」をクリック
+
+`schema.sql` 実行直後でも、このマイグレーションは冪等（何度実行しても同じ結果）です。未ログイン（`anon`）からのテーブルアクセスを閉じ、世帯メンバーの自己加入を防ぎます。詳細は [SECURITY.md](SECURITY.md)。
+
+### 3-4. 実行結果の確認
 
 - 成功すると「Success. No rows returned」と表示されます
 - エラーが表示された場合は、エラーメッセージを確認してください
   - よくあるエラー: 既にテーブルが存在する場合は `already exists` と表示されますが、`if not exists` を使っているので問題ありません
 
-### 3-4. テーブルの確認（オプション）
+### 3-5. テーブルの確認（オプション）
 
 1. 左サイドバーの「Table Editor」をクリック
 2. 以下のテーブルが作成されていることを確認：
@@ -70,6 +80,7 @@
    - `household_members`
    - `categories`
    - `entries`
+3. SQL Editor で `select * from v_monthly_totals limit 1;` を実行し、ビューが存在することを確認（行が 0 件でもエラーにならなければ OK）
 
 ## ステップ4: 環境変数の設定
 
