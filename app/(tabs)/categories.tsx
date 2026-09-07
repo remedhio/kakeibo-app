@@ -239,9 +239,10 @@ export default function CategoriesScreen() {
       Alert.alert('親カテゴリは削除できません');
       return;
     }
-    if (window.confirm('このカテゴリを削除しますか？')) {
-      performDelete(item.id);
-    }
+    Alert.alert('このカテゴリを削除しますか？', undefined, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '削除', style: 'destructive', onPress: () => performDelete(item.id) },
+    ]);
   };
 
   const moveCategory = async (id: string, direction: 'up' | 'down') => {

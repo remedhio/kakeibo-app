@@ -220,9 +220,10 @@ export default function EntriesScreen() {
   };
 
   const onDelete = (id: string) => {
-    if (window.confirm('この記録を削除しますか？')) {
-      deleteMutation.mutate(id);
-    }
+    Alert.alert('この記録を削除しますか？', undefined, [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '削除', style: 'destructive', onPress: () => deleteMutation.mutate(id) },
+    ]);
   };
 
   const openGraph = (categoryId: string | null, name: string) => {
