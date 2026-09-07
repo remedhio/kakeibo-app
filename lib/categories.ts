@@ -11,7 +11,6 @@ export type CategoryRow = {
 };
 
 const ensureInFlight = new Map<string, Promise<boolean>>();
-const dedupeInFlight = new Map<string, Promise<boolean>>();
 const loadInFlight = new Map<string, Promise<CategoryRow[]>>();
 
 function pickCanonical<T extends { id: string; order: number | null }>(items: T[]): T {
@@ -34,59 +33,6 @@ function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
   return map;
 }
 
-async function reassignEntries(fromIds: string[], toId: string, userId: string): Promise<boolean> {
-  if (!fromIds.length) return true;
-  const { error } = await supabase
-    .from('entries')
-    .update({ category_id: toId })
-    .in('category_id', fromIds)
-    .eq('user_id', userId)
-    .is('household_id', null);
-  if (error) {
-    console.warn('reassignEntries failed', error.message);
-    return false;
-  }
-  return true;
-}
-
-async function deleteCategories(ids: string[], userId: string): Promise<boolean> {
-  if (!ids.length) return true;
-  const { error } = await supabase
-    .from('categories')
-    .delete()
-    .in('id', ids)
-    .eq('user_id', userId)
-    .is('household_id', null);
-  if (!error) return true;
-
-  console.warn('deleteCategories batch failed, retrying one-by-one', error.message);
-  let allOk = true;
-  for (const id of ids) {
-    const { error: oneError } = await supabase
-      .from('categories')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId)
-      .is('household_id', null);
-    if (oneError) {
-      console.warn('deleteCategory failed', id, oneError.message);
-      allOk = false;
-    }
-  }
-  return allOk;
-}
-
-/** Merge same-name siblings under one parent: reassign entries, then delete dupes. */
-async function mergeSiblingGroup(siblings: CategoryRow[], userId: string): Promise<boolean> {
-  if (siblings.length <= 1) return false;
-  const canonical = pickCanonical(siblings);
-  const dupes = siblings.filter((c) => c.id !== canonical.id);
-  const dupeIds = dupes.map((c) => c.id);
-  await reassignEntries(dupeIds, canonical.id, userId);
-  await deleteCategories(dupeIds, userId);
-  return true;
-}
-
 export type CollapsedCategories<T> = {
   categories: T[];
   /** Maps any duplicate category id → the kept canonical id */
@@ -95,7 +41,7 @@ export type CollapsedCategories<T> = {
 
 /**
  * Collapse duplicate parents (type+name) and children (parent+name) for UI.
- * Remaps child parent_id onto the kept parent so chips stay consistent even if DB delete failed.
+ * Defensive display helper; DB unique indexes prevent new duplicates.
  */
 export function collapseCategoriesForDisplay<T extends {
   id: string;
@@ -192,104 +138,14 @@ export async function ensureParentCategories(userId: string): Promise<boolean> {
 }
 
 /**
- * Merge duplicate categories (same type+name+parent_id) for a user.
- * Reassigns entries/children onto the canonical row, then deletes dupes.
- * Concurrent calls for the same user share one in-flight Promise.
- * Individual step failures are logged; the function still tries to clean remaining groups.
- * @returns true if any merge/delete was attempted on a duplicate group
- */
-export async function dedupeCategories(userId: string): Promise<boolean> {
-  const existing = dedupeInFlight.get(userId);
-  if (existing) return existing;
-
-  const promise = (async () => {
-    let categories = await fetchUserCategories(userId);
-    let changed = false;
-
-    const parents = categories.filter((c) => c.parent_id == null);
-    const parentGroups = groupBy(parents, (c) => `${c.type}:${c.name.trim()}`);
-
-    for (const group of parentGroups.values()) {
-      if (group.length <= 1) continue;
-      const canonical = pickCanonical(group);
-      const dupes = group.filter((c) => c.id !== canonical.id);
-      const dupeIds = dupes.map((c) => c.id);
-
-      // Batch-reparent children of duplicate parents onto the canonical parent
-      const { error: reparentError } = await supabase
-        .from('categories')
-        .update({ parent_id: canonical.id })
-        .in('parent_id', dupeIds)
-        .eq('user_id', userId)
-        .is('household_id', null);
-      if (reparentError) {
-        console.warn('reparent children failed', reparentError.message);
-        // Fall back to per-row updates using the in-memory list
-        const orphanChildren = categories.filter((c) => c.parent_id && dupeIds.includes(c.parent_id));
-        for (const child of orphanChildren) {
-          const { error } = await supabase
-            .from('categories')
-            .update({ parent_id: canonical.id })
-            .eq('id', child.id)
-            .eq('user_id', userId)
-            .is('household_id', null);
-          if (error) console.warn('reparent child failed', child.id, error.message);
-          else child.parent_id = canonical.id;
-        }
-      } else {
-        categories.forEach((c) => {
-          if (c.parent_id && dupeIds.includes(c.parent_id)) c.parent_id = canonical.id;
-        });
-      }
-
-      // After reparenting, merge same-name children under the canonical parent
-      const underCanonical = categories.filter((c) => c.parent_id === canonical.id);
-      const childNameGroups = groupBy(underCanonical, (c) => c.name.trim());
-      for (const childGroup of childNameGroups.values()) {
-        if (await mergeSiblingGroup(childGroup, userId)) changed = true;
-      }
-
-      // Entries pointing at duplicate parents → canonical
-      await reassignEntries(dupeIds, canonical.id, userId);
-      await deleteCategories(dupeIds, userId);
-      changed = true;
-
-      categories = await fetchUserCategories(userId);
-    }
-
-    // Remaining child duplicates (same parent_id + name)
-    categories = await fetchUserCategories(userId);
-    const children = categories.filter((c) => c.parent_id != null);
-    const childGroups = groupBy(children, (c) => `${c.parent_id}:${c.name.trim()}`);
-    for (const group of childGroups.values()) {
-      if (await mergeSiblingGroup(group, userId)) changed = true;
-    }
-
-    return changed;
-  })().finally(() => {
-    dedupeInFlight.delete(userId);
-  });
-
-  dedupeInFlight.set(userId, promise);
-  return promise;
-}
-
-/**
- * Load categories for UI screens (Add / Entries / etc.):
- * 1) best-effort DB merge
- * 2) best-effort ensure default parents
- * 3) fetch + always collapse duplicates for display
+ * Load categories for UI screens: ensure default parents, fetch, collapse for display.
+ * Duplicate merging is handled by DB migration + unique indexes (not on every load).
  */
 export async function loadUserCategories(userId: string): Promise<CategoryRow[]> {
   const existing = loadInFlight.get(userId);
   if (existing) return existing;
 
   const promise = (async () => {
-    try {
-      await dedupeCategories(userId);
-    } catch (e) {
-      console.warn('dedupeCategories failed', e);
-    }
     try {
       await ensureParentCategories(userId);
     } catch (e) {

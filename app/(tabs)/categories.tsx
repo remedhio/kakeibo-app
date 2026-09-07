@@ -16,7 +16,6 @@ import { colors, fonts, layout, radius, spacing, typography } from '@/constants/
 import {
   CategoryRow,
   collapseCategoriesForDisplay,
-  dedupeCategories,
   ensureParentCategories,
   fetchUserCategories,
   hasSiblingNameConflict,
@@ -81,20 +80,15 @@ export default function CategoriesScreen() {
 
   useEffect(() => {
     if (!session?.user?.id) return;
-    const userId = session.user.id;
     (async () => {
-      await refresh();
       try {
-        const deduped = await dedupeCategories(userId);
-        const ensured = await ensureParentCategories(userId);
-        if (deduped || ensured) {
-          await refresh();
+        const ensured = await ensureParentCategories(session.user.id);
+        await refresh();
+        if (ensured) {
           queryClient.invalidateQueries({ queryKey: ['categories'] });
-          if (deduped) queryClient.invalidateQueries({ queryKey: ['entries'] });
         }
       } catch (e) {
-        console.warn('category init merge failed', e);
-        // still collapse whatever is in DB
+        console.warn('category init failed', e);
         await refresh();
       }
     })();
