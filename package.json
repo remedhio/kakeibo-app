@@ -11,7 +11,7 @@
     "preview:web": "npx expo export --platform web && npx serve dist",
     "validate:schema": "bash scripts/validate-schema.sh",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx --test lib/**/*.test.ts"
+    "test": "npx tsx --test lib/categories.test.ts lib/api/normalize.test.ts lib/api/entries.test.ts",
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
