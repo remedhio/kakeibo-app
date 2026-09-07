@@ -59,22 +59,35 @@ export default function AddEntryScreen() {
         values.note.trim() ||
         `${toISODate(values.startDate)}〜${toISODate(values.endDate)}の固定費`;
       try {
-        for (const happened_on of dates) {
-          const { error } = await supabase.from('entries').insert({
-            type: values.type,
-            amount: amountNum,
-            happened_on,
-            category_id: values.categoryId,
-            note,
-            user_id: session.user.id,
-          });
-          if (error) throw error;
+        let insertedCount = dates.length;
+        const { data, error } = await supabase.rpc('create_fixed_expense_entries', {
+          p_type: values.type,
+          p_amount: amountNum,
+          p_category_id: values.categoryId,
+          p_note: note,
+          p_happened_on_dates: dates,
+        });
+        if (error) {
+          // RPC 未デプロイ時は従来の逐次 INSERT にフォールバック
+          for (const happened_on of dates) {
+            const { error: insertError } = await supabase.from('entries').insert({
+              type: values.type,
+              amount: amountNum,
+              happened_on,
+              category_id: values.categoryId,
+              note,
+              user_id: session.user.id,
+            });
+            if (insertError) throw insertError;
+          }
+        } else if (typeof data === 'number') {
+          insertedCount = data;
         }
         queryClient.invalidateQueries({ queryKey: ['entries'] });
         setShowSuccess(true);
         setFormKey((k) => k + 1);
         setTimeout(() => setShowSuccess(false), 4000);
-        Alert.alert('固定費を登録しました', `${dates.length}件の記録を追加しました`);
+        Alert.alert('固定費を登録しました', `${insertedCount}件の記録を追加しました`);
       } catch (e: any) {
         Alert.alert('保存に失敗しました', e?.message ?? '');
       }

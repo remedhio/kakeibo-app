@@ -8,7 +8,9 @@
     "build": "npx expo export --platform web",
     "build:web": "npx expo export --platform web",
     "preview:web": "npx expo export --platform web && npx serve dist",
-    "validate:schema": "bash scripts/validate-schema.sh"
+    "validate:schema": "bash scripts/validate-schema.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "npx tsx --test lib/**/*.test.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "tsx": "^4.23.13",
     "typescript": "~5.9.2"
   },
   "private": true
