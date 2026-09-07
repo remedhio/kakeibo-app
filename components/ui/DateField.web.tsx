@@ -3,10 +3,18 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors, fonts, layout, radius, spacing, typography } from '@/constants/theme';
 import { toISODate, toMonthValue, parseMonthValue } from '@/lib/format';
 
-type DateFieldProps = {
+export type DateFieldProps = {
   label?: string;
   value: Date;
   onChange: (date: Date) => void;
+};
+
+export type MonthPickerProps = {
+  value: Date;
+  onChange: (date: Date) => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  label?: string;
 };
 
 export function DateField({ label, value, onChange }: DateFieldProps) {
@@ -16,7 +24,7 @@ export function DateField({ label, value, onChange }: DateFieldProps) {
       {createElement('input', {
         type: 'date',
         value: toISODate(value),
-        onChange: (e: any) => {
+        onChange: (e: { target?: { value?: string } }) => {
           const next = e?.target?.value;
           if (next) onChange(new Date(next + 'T00:00:00'));
         },
@@ -26,19 +34,11 @@ export function DateField({ label, value, onChange }: DateFieldProps) {
   );
 }
 
-type MonthPickerProps = {
-  value: Date;
-  onChange: (date: Date) => void;
-  onPrev?: () => void;
-  onNext?: () => void;
-  label?: string;
-};
-
 export function MonthPicker({ value, onChange, onPrev, onNext, label }: MonthPickerProps) {
   return (
     <View style={styles.monthRow}>
       {onPrev ? (
-        <TouchableOpacity onPress={onPrev} hitSlop={8} style={styles.navBtn}>
+        <TouchableOpacity onPress={onPrev} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="前の月">
           <Text style={styles.nav}>‹</Text>
         </TouchableOpacity>
       ) : null}
@@ -47,7 +47,7 @@ export function MonthPicker({ value, onChange, onPrev, onNext, label }: MonthPic
         {createElement('input', {
           type: 'month',
           value: toMonthValue(value),
-          onChange: (e: any) => {
+          onChange: (e: { target?: { value?: string } }) => {
             const next = e?.target?.value;
             if (next) onChange(parseMonthValue(next));
           },
@@ -55,7 +55,7 @@ export function MonthPicker({ value, onChange, onPrev, onNext, label }: MonthPic
         })}
       </View>
       {onNext ? (
-        <TouchableOpacity onPress={onNext} hitSlop={8} style={styles.navBtn}>
+        <TouchableOpacity onPress={onNext} hitSlop={8} style={styles.navBtn} accessibilityRole="button" accessibilityLabel="次の月">
           <Text style={styles.nav}>›</Text>
         </TouchableOpacity>
       ) : null}

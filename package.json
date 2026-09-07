@@ -5,8 +5,9 @@
   "scripts": {
     "start": "expo start --web",
     "web": "expo start --web",
-    "build": "npx expo export --platform web",
-    "build:web": "npx expo export --platform web",
+    "check:env": "bash scripts/check-env.sh",
+    "build": "npm run check:env && npx expo export --platform web",
+    "build:web": "npm run check:env && npx expo export --platform web",
     "preview:web": "npx expo export --platform web && npx serve dist",
     "validate:schema": "bash scripts/validate-schema.sh",
     "typecheck": "tsc --noEmit",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.87.1",
     "@tanstack/react-query": "^5.90.12",

@@ -169,6 +169,10 @@ npm start
 
 公開の新規登録は無効化してください（[SECURITY.md](SECURITY.md)）。既存ユーザーのパスワード再設定メールだけを使います。
 
+## アプリのスコープ（個人利用）
+
+このアプリは **ログイン済みユーザーの個人データ**（`household_id IS NULL`）のみを扱います。`households` / `household_members` テーブルは将来用で、世帯共有・招待機能は未実装です。
+
 ## 次のステップ
 
 セットアップ後は [SECURITY.md](SECURITY.md) のチェックリスト（DBパスワードのローテーション、新規登録の無効化、Redirect URL）を完了してください。
