@@ -13,18 +13,13 @@ import {
 } from '@/components/ui';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { formatCurrency, formatMonth, monthRange } from '@/lib/format';
-import { supabase } from '@/lib/supabaseClient';
+import { fetchDashboardEntries } from '@/lib/api/entries';
+import { queryKeys } from '@/lib/api/keys';
+import type { EntryRow } from '@/lib/api/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useIsCompact } from '@/hooks/useIsCompact';
 
-type Entry = {
-  id: string;
-  type: 'income' | 'expense';
-  amount: number;
-  happened_on: string;
-  note?: string | null;
-  categories?: { name: string } | null;
-};
+type Entry = EntryRow;
 
 export default function DashboardScreen() {
   const { session, signOut } = useAuth();
@@ -39,25 +34,8 @@ export default function DashboardScreen() {
 
   const userId = session?.user?.id;
   const { data: entries = [], isLoading, isError, refetch } = useQuery<Entry[]>({
-    queryKey: ['entries', 'dashboard', userId, year, month],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('entries')
-        .select('id, type, amount, happened_on, note, categories(name)')
-        .eq('user_id', userId!)
-        .is('household_id', null)
-        .gte('happened_on', startDate)
-        .lte('happened_on', endDate)
-        .order('happened_on', { ascending: false });
-      if (error) throw error;
-      return (data ?? []).map((entry: any) => ({
-        ...entry,
-        categories:
-          Array.isArray(entry.categories) && entry.categories.length > 0
-            ? entry.categories[0]
-            : entry.categories,
-      })) as Entry[];
-    },
+    queryKey: queryKeys.dashboardEntries(userId, year, month),
+    queryFn: async () => fetchDashboardEntries(userId!, startDate, endDate),
     enabled: !!userId,
   });
 

@@ -7,7 +7,8 @@ import { Button, ErrorState, LoadingState, Screen } from '@/components/ui';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { loadUserCategories } from '@/lib/categories';
 import { generateMonthlyDates, toISODate } from '@/lib/format';
-import { supabase } from '@/lib/supabaseClient';
+import { createFixedExpenseEntries, insertEntry } from '@/lib/api/entries';
+import { queryKeys } from '@/lib/api/keys';
 import { useAuth } from '@/providers/AuthProvider';
 
 export default function AddEntryScreen() {
@@ -18,15 +19,14 @@ export default function AddEntryScreen() {
 
   const userId = session?.user?.id;
   const { data: categories = [], isLoading, isError, refetch } = useQuery<FormCategory[]>({
-    queryKey: ['categories', userId],
+    queryKey: queryKeys.categories(userId),
     queryFn: async () => (await loadUserCategories(userId!)) as FormCategory[],
     enabled: !!userId,
   });
 
   const createMutation = useMutation({
     mutationFn: async (entry: Record<string, unknown>) => {
-      const { error } = await supabase.from('entries').insert(entry);
-      if (error) throw error;
+      await insertEntry(entry);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['entries'] });
@@ -59,31 +59,16 @@ export default function AddEntryScreen() {
         values.note.trim() ||
         `${toISODate(values.startDate)}〜${toISODate(values.endDate)}の固定費`;
       try {
-        let insertedCount = dates.length;
-        const { data, error } = await supabase.rpc('create_fixed_expense_entries', {
-          p_type: values.type,
-          p_amount: amountNum,
-          p_category_id: values.categoryId,
-          p_note: note,
-          p_happened_on_dates: dates,
+        const insertedCount = await createFixedExpenseEntries({
+          userId: session.user.id,
+          type: values.type,
+          amount: amountNum,
+          categoryId: values.categoryId,
+          note,
+          dates,
         });
-        if (error) {
-          // RPC 未デプロイ時は従来の逐次 INSERT にフォールバック
-          for (const happened_on of dates) {
-            const { error: insertError } = await supabase.from('entries').insert({
-              type: values.type,
-              amount: amountNum,
-              happened_on,
-              category_id: values.categoryId,
-              note,
-              user_id: session.user.id,
-            });
-            if (insertError) throw insertError;
-          }
-        } else if (typeof data === 'number') {
-          insertedCount = data;
-        }
         queryClient.invalidateQueries({ queryKey: ['entries'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.categoryTotals(userId) });
         setShowSuccess(true);
         setFormKey((k) => k + 1);
         setTimeout(() => setShowSuccess(false), 4000);

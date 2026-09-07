@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Chip,
@@ -14,6 +14,14 @@ import {
 } from '@/components/ui';
 import { colors, fonts, layout, radius, spacing, typography } from '@/constants/theme';
 import {
+  deleteCategory,
+  insertCategory,
+  updateCategory,
+  updateCategoryOrder,
+} from '@/lib/api/categories';
+import { fetchCategoryAmountTotals } from '@/lib/api/entries';
+import { queryKeys } from '@/lib/api/keys';
+import {
   CategoryRow,
   collapseCategoriesForDisplay,
   ensureParentCategories,
@@ -21,78 +29,97 @@ import {
   hasSiblingNameConflict,
 } from '@/lib/categories';
 import { EXPENSE_PARENT_ORDER, INCOME_PARENT_ORDER, formatCurrency, sortParentCategories } from '@/lib/format';
-import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/providers/AuthProvider';
 import { useIsCompact } from '@/hooks/useIsCompact';
 
 type Category = CategoryRow;
 
-type EntryTotal = {
-  id: string;
-  category_id: string | null;
-  type: 'income' | 'expense';
-  amount: number;
-};
-
 export default function CategoriesScreen() {
   const { session } = useAuth();
   const compact = useIsCompact();
   const queryClient = useQueryClient();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [parentId, setParentId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const userId = session?.user?.id;
-  const { data: entries = [] } = useQuery<EntryTotal[]>({
-    queryKey: ['entries', userId],
+
+  const {
+    data: categories = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<Category[]>({
+    queryKey: queryKeys.categories(userId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('entries')
-        .select('id, category_id, type, amount, happened_on')
-        .eq('user_id', userId!)
-        .is('household_id', null)
-        .order('happened_on', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as EntryTotal[];
+      const rows = await fetchUserCategories(userId!);
+      return collapseCategoriesForDisplay(rows).categories;
     },
     enabled: !!userId,
   });
 
-  const refresh = useCallback(async () => {
-    if (!session?.user?.id) return;
-    setLoading(true);
-    setLoadError(false);
-    try {
-      // Always collapse for display so duplicate parents never render even if DB delete failed
-      const data = collapseCategoriesForDisplay(await fetchUserCategories(session.user.id)).categories;
-      setCategories(data);
-    } catch {
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [session?.user?.id]);
+  const { data: categoryTotals = new Map<string, number>() } = useQuery({
+    queryKey: queryKeys.categoryTotals(userId),
+    queryFn: () => fetchCategoryAmountTotals(userId!),
+    enabled: !!userId,
+  });
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!userId) return;
     (async () => {
       try {
-        const ensured = await ensureParentCategories(session.user.id);
-        await refresh();
+        const ensured = await ensureParentCategories(userId);
         if (ensured) {
-          queryClient.invalidateQueries({ queryKey: ['categories'] });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.categories(userId) });
         }
       } catch (e) {
         console.warn('category init failed', e);
-        await refresh();
       }
     })();
-  }, [session?.user?.id, refresh, queryClient]);
+  }, [userId, queryClient]);
+
+  const invalidateCategories = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.categories(userId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.categoryTotals(userId) });
+  }, [queryClient, userId]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!session?.user?.id || !parentId) throw new Error('invalid state');
+      if (editingId) {
+        await updateCategory(session.user.id, editingId, {
+          name: name.trim(),
+          type,
+          parent_id: parentId,
+        });
+      } else {
+        const siblings = categories.filter((c) => c.parent_id === parentId);
+        const maxOrder = siblings.reduce((max, c) => Math.max(max, c.order ?? -1), -1);
+        await insertCategory({
+          userId: session.user.id,
+          name: name.trim(),
+          type,
+          parentId,
+          order: maxOrder + 1,
+        });
+      }
+    },
+    onSuccess: () => {
+      resetForm();
+      invalidateCategories();
+    },
+    onError: (e: Error) => Alert.alert('保存に失敗しました', e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!session?.user?.id) return;
+      await deleteCategory(session.user.id, id);
+    },
+    onSuccess: invalidateCategories,
+    onError: (e: Error) => Alert.alert('削除に失敗しました', e.message),
+  });
 
   const isParentCategory = (item: Category) => {
     if (item.parent_id !== null) return false;
@@ -104,15 +131,6 @@ export default function CategoriesScreen() {
     () => sortParentCategories(categories.filter((c) => c.type === type && c.parent_id === null), type),
     [categories, type]
   );
-
-  const categoryTotals = useMemo(() => {
-    const map = new Map<string, number>();
-    entries.forEach((e) => {
-      if (!e.category_id) return;
-      map.set(e.category_id, (map.get(e.category_id) || 0) + e.amount);
-    });
-    return map;
-  }, [entries]);
 
   const parentTotals = useMemo(() => {
     const map = new Map<string, number>();
@@ -149,7 +167,7 @@ export default function CategoriesScreen() {
     setEditingId(null);
   };
 
-  const save = async () => {
+  const save = () => {
     if (!session?.user?.id) return;
     if (!name.trim()) {
       Alert.alert('名前を入力してください');
@@ -159,46 +177,11 @@ export default function CategoriesScreen() {
       Alert.alert('親カテゴリを選択してください');
       return;
     }
-    if (
-      hasSiblingNameConflict(categories, {
-        parentId,
-        name,
-        excludeId: editingId,
-      })
-    ) {
+    if (hasSiblingNameConflict(categories, { parentId, name, excludeId: editingId })) {
       Alert.alert('同じ親カテゴリ内に同名のカテゴリがあります');
       return;
     }
-    setSaving(true);
-    try {
-      if (editingId) {
-        const { error } = await supabase
-          .from('categories')
-          .update({ name: name.trim(), type, parent_id: parentId })
-          .eq('id', editingId)
-          .eq('user_id', session.user.id)
-          .is('household_id', null);
-        if (error) throw error;
-      } else {
-        const siblings = categories.filter((c) => c.parent_id === parentId);
-        const maxOrder = siblings.reduce((max, c) => Math.max(max, c.order ?? -1), -1);
-        const { error } = await supabase.from('categories').insert({
-          name: name.trim(),
-          type,
-          parent_id: parentId,
-          user_id: session.user.id,
-          order: maxOrder + 1,
-        });
-        if (error) throw error;
-      }
-      resetForm();
-      await refresh();
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-    } catch (e: any) {
-      Alert.alert('保存に失敗しました', e?.message ?? '');
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate();
   };
 
   const onEdit = (item: Category) => {
@@ -212,22 +195,6 @@ export default function CategoriesScreen() {
     setParentId(item.parent_id);
   };
 
-  const performDelete = async (id: string) => {
-    if (!session?.user?.id) return;
-    const { error } = await supabase
-      .from('categories')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', session.user.id)
-      .is('household_id', null);
-    if (error) {
-      Alert.alert('削除に失敗しました', error.message);
-      return;
-    }
-    await refresh();
-    queryClient.invalidateQueries({ queryKey: ['categories'] });
-  };
-
   const onDelete = (item: Category) => {
     if (isParentCategory(item)) {
       Alert.alert('親カテゴリは削除できません');
@@ -235,7 +202,7 @@ export default function CategoriesScreen() {
     }
     Alert.alert('このカテゴリを削除しますか？', undefined, [
       { text: 'キャンセル', style: 'cancel' },
-      { text: '削除', style: 'destructive', onPress: () => performDelete(item.id) },
+      { text: '削除', style: 'destructive', onPress: () => deleteMutation.mutate(item.id) },
     ]);
   };
 
@@ -252,11 +219,7 @@ export default function CategoriesScreen() {
     const needsInit = orders.some((o) => o == null) || new Set(orders).size !== orders.length;
     if (needsInit) {
       for (let i = 0; i < siblings.length; i++) {
-        await supabase
-          .from('categories')
-          .update({ order: i })
-          .eq('id', siblings[i].id)
-          .eq('user_id', session.user.id);
+        await updateCategoryOrder(session.user.id, siblings[i].id, i);
       }
       siblings = siblings.map((s, i) => ({ ...s, order: i }));
     }
@@ -267,10 +230,9 @@ export default function CategoriesScreen() {
 
     const a = siblings[index];
     const b = siblings[swapWith];
-    await supabase.from('categories').update({ order: b.order }).eq('id', a.id).eq('user_id', session.user.id);
-    await supabase.from('categories').update({ order: a.order }).eq('id', b.id).eq('user_id', session.user.id);
-    await refresh();
-    queryClient.invalidateQueries({ queryKey: ['categories'] });
+    await updateCategoryOrder(session.user.id, a.id, b.order);
+    await updateCategoryOrder(session.user.id, b.id, a.order);
+    invalidateCategories();
   };
 
   return (
@@ -298,18 +260,30 @@ export default function CategoriesScreen() {
                 ))}
               </ChipScrollRow>
               <View style={styles.formActions}>
-                <Button title={editingId ? '更新' : '追加'} onPress={save} loading={saving} style={{ flex: 1 }} />
-                {editingId ? <Button title="キャンセル" variant="secondary" onPress={resetForm} style={{ flex: 1 }} /> : null}
+                <Button
+                  title={editingId ? '更新' : '追加'}
+                  onPress={save}
+                  loading={saveMutation.isPending}
+                  style={{ flex: 1 }}
+                />
+                {editingId ? (
+                  <Button title="キャンセル" variant="secondary" onPress={resetForm} style={{ flex: 1 }} />
+                ) : null}
               </View>
             </View>
             <View style={styles.listHeader}>
               <Text style={styles.sectionTitle}>一覧</Text>
-              <Button title="再読込" variant="ghost" onPress={refresh} style={{ paddingVertical: 4 }} />
+              <Button title="再読込" variant="ghost" onPress={() => refetch()} style={{ paddingVertical: 4 }} />
             </View>
-            {loading ? <LoadingState /> : null}
-            {loadError ? <ErrorState onRetry={refresh} /> : null}
-            {!loading && !loadError && sorted.length === 0 ? (
-              <EmptyState title="カテゴリがありません" message="再読込して親カテゴリを初期化してください。" actionLabel="ダッシュボードへ" actionHref="/(tabs)/" />
+            {isLoading ? <LoadingState /> : null}
+            {isError ? <ErrorState onRetry={() => refetch()} /> : null}
+            {!isLoading && !isError && sorted.length === 0 ? (
+              <EmptyState
+                title="カテゴリがありません"
+                message="再読込して親カテゴリを初期化してください。"
+                actionLabel="ダッシュボードへ"
+                actionHref="/(tabs)/"
+              />
             ) : null}
           </View>
         }
@@ -319,9 +293,7 @@ export default function CategoriesScreen() {
           return (
             <View style={[styles.row, !item.parent_id && styles.parentRow, compact && styles.rowCompact]}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.rowName}>
-                  {item.parent_id ? `└ ${item.name}` : item.name}
-                </Text>
+                <Text style={styles.rowName}>{item.parent_id ? `└ ${item.name}` : item.name}</Text>
                 <Text style={styles.rowMeta}>
                   {item.type === 'income' ? '収入' : '支出'}
                   {total > 0 ? ` ・ ${formatCurrency(total)}` : ''}

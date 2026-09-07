@@ -18,19 +18,18 @@ import {
 import { colors, fonts, layout, radius, spacing, typography } from '@/constants/theme';
 import { loadUserCategories } from '@/lib/categories';
 import { formatCurrency, formatDate, formatMonth, monthRange, sortParentCategories, toISODate } from '@/lib/format';
-import { supabase } from '@/lib/supabaseClient';
+import {
+  deleteEntry,
+  fetchCategoryMonthlyAmounts,
+  fetchEntriesForMonth,
+  updateEntry,
+} from '@/lib/api/entries';
+import { queryKeys } from '@/lib/api/keys';
+import type { EntryRow } from '@/lib/api/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { useIsCompact } from '@/hooks/useIsCompact';
 
-type Entry = {
-  id: string;
-  type: 'income' | 'expense';
-  amount: number;
-  happened_on: string;
-  note?: string | null;
-  category_id: string | null;
-  categories?: { name: string; parent_id?: string | null } | null;
-};
+type Entry = EntryRow;
 
 export default function EntriesScreen() {
   const { session } = useAuth();
@@ -48,7 +47,7 @@ export default function EntriesScreen() {
 
   const userId = session?.user?.id;
   const { data: categories = [] } = useQuery<FormCategory[]>({
-    queryKey: ['categories', userId],
+    queryKey: queryKeys.categories(userId),
     queryFn: async () => (await loadUserCategories(userId!)) as FormCategory[],
     enabled: !!userId,
   });
@@ -59,50 +58,14 @@ export default function EntriesScreen() {
     isError,
     refetch,
   } = useQuery<Entry[]>({
-    queryKey: ['entries', userId, filterType, start],
-    queryFn: async () => {
-      let q = supabase
-        .from('entries')
-        .select('*, categories(name, parent_id)')
-        .eq('user_id', userId!)
-        .is('household_id', null)
-        .gte('happened_on', start)
-        .lte('happened_on', end)
-        .order('happened_on', { ascending: false })
-        .order('created_at', { ascending: false });
-      if (filterType !== 'all') q = q.eq('type', filterType);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []).map((entry: any) => ({
-        ...entry,
-        categories:
-          Array.isArray(entry.categories) && entry.categories.length > 0
-            ? entry.categories[0]
-            : entry.categories,
-      })) as Entry[];
-    },
+    queryKey: queryKeys.entries(userId, filterType, start),
+    queryFn: async () => fetchEntriesForMonth(userId!, start, end, filterType),
     enabled: !!userId,
   });
 
   const { data: monthlyCategoryData = [] } = useQuery({
-    queryKey: ['categoryMonthlyData', userId, selectedCategoryId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('entries')
-        .select('amount, happened_on, type')
-        .eq('user_id', userId!)
-        .is('household_id', null)
-        .eq('category_id', selectedCategoryId!);
-      if (error) throw error;
-      const map = new Map<string, number>();
-      (data ?? []).forEach((row: any) => {
-        const key = String(row.happened_on).slice(0, 7);
-        map.set(key, (map.get(key) || 0) + row.amount);
-      });
-      return Array.from(map.entries())
-        .map(([month, amount]) => ({ month, amount }))
-        .sort((a, b) => a.month.localeCompare(b.month));
-    },
+    queryKey: queryKeys.categoryMonthlyData(userId, selectedCategoryId),
+    queryFn: async () => fetchCategoryMonthlyAmounts(userId!, selectedCategoryId!),
     enabled: !!selectedCategoryId && !!userId,
   });
 
@@ -167,13 +130,7 @@ export default function EntriesScreen() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, entry }: { id: string; entry: Record<string, unknown> }) => {
-      const { error } = await supabase
-        .from('entries')
-        .update(entry)
-        .eq('id', id)
-        .eq('user_id', session!.user.id)
-        .is('household_id', null);
-      if (error) throw error;
+      await updateEntry(session!.user.id, id, entry);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['entries'] });
@@ -184,13 +141,7 @@ export default function EntriesScreen() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('entries')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', session!.user.id)
-        .is('household_id', null);
-      if (error) throw error;
+      await deleteEntry(session!.user.id, id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['entries'] }),
     onError: (e: any) => Alert.alert('削除に失敗しました', e?.message ?? ''),
