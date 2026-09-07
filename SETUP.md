@@ -66,6 +66,15 @@
 
 `schema.sql` 実行直後でも、このマイグレーションは冪等（何度実行しても同じ結果）です。未ログイン（`anon`）からのテーブルアクセスを閉じ、世帯メンバーの自己加入を防ぎます。詳細は [SECURITY.md](SECURITY.md)。
 
+### 3-3a. 既存プロジェクトでカテゴリ重複がある場合（アップグレード時）
+
+テーブルがすでに存在し、過去のバージョンでカテゴリ重複が入っている場合のみ、次を **1 回** 実行します。
+
+1. `supabase/migrations/20260907140000_merge_duplicate_categories_and_unique.sql`
+2. （任意）固定費の原子登録 RPC: `supabase/migrations/20260907140100_create_fixed_expense_rpc.sql`
+
+新規セットアップ（空の DB に `schema.sql` だけ実行した場合）は不要です。`schema.sql` に UNIQUE 制約と RPC が含まれます。
+
 ### 3-4. 実行結果の確認
 
 - 成功すると「Success. No rows returned」と表示されます

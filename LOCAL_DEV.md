@@ -17,11 +17,12 @@
 
 手順の詳細は [SETUP.md](SETUP.md) のステップ3を参照してください。
 
-### 既存プロジェクト（テーブルはあるが権限締めが未適用の場合）
+### 既存プロジェクト（テーブルはあるが UNIQUE / RPC が未適用の場合）
 
-1. SQL Editor で `supabase/migrations/20260828150000_harden_grants_and_member_insert.sql` だけを実行する
+1. SQL Editor で `supabase/migrations/20260907140000_merge_duplicate_categories_and_unique.sql` を **1 回** 実行する（重複マージ → UNIQUE 制約）
+2. （任意）`supabase/migrations/20260907140100_create_fixed_expense_rpc.sql` を実行する
 
-詳細は [SECURITY.md](SECURITY.md) を参照。
+詳細は [SETUP.md](SETUP.md) のステップ3-3a を参照。
 
 ## ステップ2: 環境変数の確認
 

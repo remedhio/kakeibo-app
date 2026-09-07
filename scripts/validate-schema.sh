@@ -35,5 +35,8 @@ done
 require "categories RLS" 'enable row level security'
 require "entries_select_personal policy" 'entries_select_personal'
 require "anon revoke" 'revoke all on table public\.categories from anon'
+require "unique parent index" 'categories_unique_parent_personal'
+require "unique child index" 'categories_unique_child_personal'
+require "fixed expense rpc" 'create_fixed_expense_entries'
 
 echo "Schema validation passed."
