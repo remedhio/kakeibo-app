@@ -2,7 +2,7 @@ import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, 
 import { Alert } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 
-import { LOGIN_ERROR_MESSAGE, authRedirectUrl } from '@/lib/auth';
+import { LOGIN_ERROR_MESSAGE, PasswordResetResult, authRedirectUrl, isNetworkAuthError } from '@/lib/auth';
 import { supabase } from '@/lib/supabaseClient';
 
 type AuthContextValue = {
@@ -12,7 +12,7 @@ type AuthContextValue = {
   user: User | null;
   signIn: (params: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<PasswordResetResult>;
   updatePassword: (password: string) => Promise<void>;
 };
 
@@ -87,10 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const requestPasswordReset = useCallback(async (email: string) => {
-    await supabase.auth.resetPasswordForEmail(email.trim(), {
+  const requestPasswordReset = useCallback(async (email: string): Promise<PasswordResetResult> => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: authRedirectUrl('/reset-password'),
     });
+    if (error) {
+      return { ok: false, networkError: isNetworkAuthError(error) };
+    }
+    return { ok: true };
   }, []);
 
   const updatePassword = useCallback(async (password: string) => {

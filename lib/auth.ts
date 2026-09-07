@@ -8,6 +8,14 @@ export const LOGIN_ERROR_MESSAGE = 'メールまたはパスワードが正し�
 export const RESET_EMAIL_SENT_MESSAGE =
   '入力されたメールアドレスにアカウントがあれば、再設定用のリンクを送信しました。';
 
+export type PasswordResetResult = { ok: true } | { ok: false; networkError: boolean };
+
+export function isNetworkAuthError(error: { message?: string; status?: number | null }): boolean {
+  if (error.status === 0) return true;
+  const message = (error.message ?? '').toLowerCase();
+  return message.includes('fetch') || message.includes('network') || message.includes('failed to fetch');
+}
+
 export function isValidEmail(email: string): boolean {
   return EMAIL_PATTERN.test(email.trim());
 }

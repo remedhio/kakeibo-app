@@ -20,7 +20,12 @@ export function ModalSheet({ visible, title, onClose, children }: Props) {
             <Text style={[styles.title, compact && styles.titleCompact]} numberOfLines={2}>
               {title}
             </Text>
-            <TouchableOpacity onPress={onClose} hitSlop={16} style={styles.closeBtn}>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={16}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="閉じる">
               <Text style={styles.close}>×</Text>
             </TouchableOpacity>
           </View>

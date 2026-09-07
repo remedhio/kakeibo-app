@@ -21,7 +21,10 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading,
       style={[styles.base, styles[variant], isDisabled && styles.disabled, style]}
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.85}>
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: isDisabled }}>
       {loading ? (
         <ActivityIndicator color={spinnerColor} />
       ) : (

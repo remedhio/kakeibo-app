@@ -22,7 +22,10 @@ export function Chip({ label, selected, onPress, tone = 'default', subtitle, sty
         selected && { backgroundColor: selectedBg, borderColor: selectedBg },
         style,
       ]}
-      activeOpacity={0.85}>
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected }}
+      accessibilityLabel={subtitle ? `${label} ${subtitle}` : label}>
       <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
         {label}
       </Text>

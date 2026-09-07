@@ -38,10 +38,14 @@ export default function SignInScreen() {
     }
     setResetting(true);
     try {
-      await requestPasswordReset(trimmedEmail);
+      const result = await requestPasswordReset(trimmedEmail);
+      if (!result.ok && result.networkError) {
+        Alert.alert('送信に失敗しました', 'ネットワーク接続を確認して、もう一度お試しください。');
+        return;
+      }
+      Alert.alert('メールを確認してください', RESET_EMAIL_SENT_MESSAGE);
     } finally {
       setResetting(false);
-      Alert.alert('メールを確認してください', RESET_EMAIL_SENT_MESSAGE);
     }
   };
 
@@ -57,7 +61,7 @@ export default function SignInScreen() {
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
-          placeholder="you@example.com"
+          placeholder="メールアドレス"
           value={email}
           onChangeText={setEmail}
         />
