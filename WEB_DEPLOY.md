@@ -4,7 +4,7 @@
 
 ## 前提条件
 
-- Node.js がインストールされていること
+- Node.js 22.23.4 以上（22 系。`.nvmrc` と同じ）。24 系は 24.22.1 以上、26 系は 26.12.1 以上
 - Supabase のプロジェクトが作成済みであること
 - GitHub アカウント（Vercel/Netlify連携用）
 
@@ -145,7 +145,7 @@ netlify deploy --prod
 
 ### ビルドエラー（ローカル）
 
-- Node.js のバージョンを確認（推奨: 18以上）
+- Node.js のバージョンを確認（22 系なら 22.23.4 以上。`.nvmrc`）
 - `npm install` を実行して依存関係を再インストール
 - `node_modules` と `dist` を削除して再ビルド
 

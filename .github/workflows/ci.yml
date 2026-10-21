@@ -9,17 +9,17 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://ci.example.test
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-test-anon-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.23.4'
           cache: npm
       - run: npm ci
       - run: npm run validate:schema
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
