@@ -96,6 +96,18 @@ Save する。
 
 Authentication → Bot and Abuse Protection で CAPTCHA を有効にできます。
 
+## Node.js（2026-10-21）
+
+2026-10-21 のリリースは Node.js 22 / 24 / 26 本体の修正です。修正版は 22.23.4、24.22.1、26.12.1。深刻度の最大は HIGH です。主なものは次のとおりです。
+
+- Brotli 展開時の範囲外書き込み（CVE-2026-111497）。22 / 24 / 26
+- `dns.resolve` が NUL バイトで名前を切る（CVE-2026-105482）。22 / 24 / 26
+- TLS のホスト名検証を迂回できる不具合（CVE-2026-106069 は 22 / 24 / 26、CVE-2026-105483 は 24 / 26）
+
+公開サイトの配信物は `npx expo export --platform web` の静的ファイルです。Vercel（`vercel.json`）または Netlify（`netlify.toml`）の CDN が配り、ブラウザ上の JS が Supabase と通信します。このリポジトリに `astro.config.cloudflare.mjs` と `wrangler.jsonc` はなく、上記の Brotli / OpenSSL / c-ares / `dns.resolve` は配信経路に載っていません。
+
+当たるのは Node.js 上で動かす作業です。ローカルの `npm run web`、テスト、GitHub Actions、ホスティング側のビルドがそれです。開発と CI は 22.23.4 に固定しています（`.nvmrc` と `.github/workflows/ci.yml`）。Vercel のビルドはメジャー単位で、パッチは Vercel が配信します。バージョンの指定は `.nvmrc` と CI に置き、`package.json` の `engines` には書いていません（範囲指定は Vercel 上で最新の 24 系に解決されるため）。
+
 ## アプリ側で入っている対策
 
 - 公開サインアップ API をクライアントから削除
